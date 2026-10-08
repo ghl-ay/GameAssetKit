@@ -94,6 +94,65 @@ bun run build
 bun start
 ```
 
+## 🤖 AI / 程序化调用
+
+除了浏览器 UI,项目提供三个共用同一核心层(`core/`)的机器入口,可被 AI Agent、脚本或其他程序直接调用:
+
+| 入口 | 用途 |
+|---|---|
+| **HTTP API** | `POST /api/tools/{tool}`,适合远程/跨语言调用 |
+| **MCP Server** | stdio 方式挂载到支持 MCP 的 AI 客户端(ZCode、Claude、Cursor 等) |
+| **CLI** | 本地命令行批处理 |
+
+支持的工具有 7 个:`compress`(压缩/格式转换)、`resize`(缩放)、`crop`(裁剪)、`transform`(旋转/翻转)、`background-remover`(纯色抠图)、`sprite-splitter`(精灵图拆分)、`vectorize`(矢量化)。
+
+### HTTP API
+
+```bash
+# 查看所有工具及参数 schema
+curl http://localhost:3000/api/tools
+
+# multipart 上传
+curl -X POST -F "file=@photo.png" \
+  -F 'options={"format":"jpeg","quality":80}' \
+  http://localhost:3000/api/tools/compress -o out.jpg
+
+# JSON base64
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"image_base64":"...","options":{"tolerance":10}}' \
+  http://localhost:3000/api/tools/background-remover -o out.png
+```
+
+多文件结果(如精灵图拆分)返回 `.zip`。`GET /api/tools/{tool}` 可查询单个工具的参数说明。
+
+### MCP Server
+
+```json
+{
+  "mcpServers": {
+    "image-master": {
+      "command": "bun",
+      "args": ["/path/to/image-master/mcp/server.ts"],
+      "env": { "IMAGE_MASTER_OUTPUT_DIR": "/tmp/im-output" }
+    }
+  }
+}
+```
+
+每个工具接受本地图片路径参数 `path` 及各工具选项,处理结果写入输出目录并返回文件路径。
+
+### CLI
+
+```bash
+bun cli.ts compress a.png format=webp quality=70
+bun cli.ts resize a.png width=200 fit=cover
+bun cli.ts sprite-splitter sheet.png mode=grid columns=4 rows=2
+```
+
+输出默认写入 `./output/`,可用 `--out` 指定。运行 `bun cli.ts` 查看全部工具与参数。
+
+> 注:AI 三件套(超分 `upscale`、AI 抠图、AI 修复 `inpaint`)目前仍仅浏览器端可用(依赖 ONNX Runtime Web + Web Worker),服务端迁移在计划中。
+
 ## 🌟 特点
 
 - 🔒 **隐私安全** - 所有处理均在浏览器本地完成，图片不会上传到服务器

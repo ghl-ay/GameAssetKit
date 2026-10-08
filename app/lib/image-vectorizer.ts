@@ -1,4 +1,3 @@
-// @ts-expect-error no type definitions for imagetracerjs
 import ImageTracer from "imagetracerjs";
 
 export type VectorizePreset =
