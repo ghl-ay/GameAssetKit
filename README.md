@@ -104,7 +104,11 @@ bun start
 | **MCP Server** | stdio 方式挂载到支持 MCP 的 AI 客户端(ZCode、Claude、Cursor 等) |
 | **CLI** | 本地命令行批处理 |
 
-支持的工具有 7 个:`compress`(压缩/格式转换)、`resize`(缩放)、`crop`(裁剪)、`transform`(旋转/翻转)、`background-remover`(纯色抠图)、`sprite-splitter`(精灵图拆分)、`vectorize`(矢量化)。
+支持的工具有 10 个:
+
+**服务端(sharp,HTTP API / MCP / CLI 均可用)**——7 个:`compress`(压缩/格式转换)、`resize`(缩放)、`crop`(裁剪)、`transform`(旋转/翻转)、`background-remover`(纯色抠图)、`sprite-splitter`(精灵图拆分)、`vectorize`(矢量化)。
+
+**浏览器 AI(MCP 专用,通过无头浏览器驱动)**——3 个:`upscale`(Real-ESRGAN 4x 超分)、`background-remover-ai`(ISNet AI 抠图 / ViTMatte 通道抠图)、`inpaint`(MiGAN 去水印/消除物体)。
 
 ### HTTP API
 
@@ -133,7 +137,10 @@ curl -X POST -H "Content-Type: application/json" \
     "image-master": {
       "command": "bun",
       "args": ["/path/to/image-master/mcp/server.ts"],
-      "env": { "IMAGE_MASTER_OUTPUT_DIR": "/tmp/im-output" }
+      "env": {
+        "IMAGE_MASTER_OUTPUT_DIR": "/tmp/im-output",
+        "IMAGE_MASTER_BROWSER_PROXY": "http://127.0.0.1:10808"
+      }
     }
   }
 }
@@ -151,7 +158,30 @@ bun cli.ts sprite-splitter sheet.png mode=grid columns=4 rows=2
 
 输出默认写入 `./output/`,可用 `--out` 指定。运行 `bun cli.ts` 查看全部工具与参数。
 
-> 注:AI 三件套(超分 `upscale`、AI 抠图、AI 修复 `inpaint`)目前仍仅浏览器端可用(依赖 ONNX Runtime Web + Web Worker),服务端迁移在计划中。
+### AI 工具(MCP)
+
+`upscale` / `background-remover-ai` / `inpaint` 依赖 ONNX Runtime Web + Web Worker,只能跑在浏览器里。MCP server 通过 `playwright-core` 驱动一个无头浏览器,访问本地 web app 完成推理,再把结果 Blob 取回写入输出目录。因此:
+
+- 需要 app 在运行(默认 `http://localhost:3000`);未运行时 MCP 会自动 `bun dev` 拉起(`IMAGE_MASTER_AUTOSTART=false` 可关闭)。
+- 需要本机有 Edge 或 Chrome;首次调用会下载约 27–64MB 模型并缓存在浏览器 profile 中。
+- 若网络无法直连模型源(HuggingFace / imgly CDN),设置 `IMAGE_MASTER_BROWSER_PROXY` 让浏览器走代理。
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `IMAGE_MASTER_BASE_URL` | `http://localhost:3000` | web app 地址 |
+| `IMAGE_MASTER_AUTOSTART` | `true` | 未就绪时自动 `bun dev` |
+| `IMAGE_MASTER_BROWSER_CHANNEL` | `msedge` | `msedge` / `chrome` |
+| `IMAGE_MASTER_BROWSER_PROXY` | — | 例:`http://127.0.0.1:10808` |
+| `IMAGE_MASTER_BROWSER_PROFILE_DIR` | `~/.image-master/browser-profile` | 模型缓存 |
+| `IMAGE_MASTER_BROWSER_HEADLESS` | `true` | 设为 `false` 可看到浏览器 |
+
+`inpaint` 用 `regions`(图片像素坐标的矩形数组)或 `maskPath`(遮罩图片,标记区域 alpha>128)指定要修复的范围。示例:
+
+```jsonc
+{ "path": "C:/img/photo.png", "regions": [{ "x": 1355, "y": 1408, "width": 175, "height": 110 }] }
+```
+
+> 服务端原生实现(把三个模型直接跑在 `onnxruntime-node` 上)仍在计划中,可省掉浏览器与 app 依赖。
 
 ## 🌟 特点
 
@@ -164,3 +194,5 @@ bun cli.ts sprite-splitter sheet.png mode=grid columns=4 rows=2
 ## 📄 License
 
 MIT
+
+
