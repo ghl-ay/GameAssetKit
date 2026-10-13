@@ -18,7 +18,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { tools } from "../core/registry";
+import { isMultiTool, tools, type ToolInput } from "../core/registry";
+import type { ImageResult } from "../core/types";
 import { runUpscale, runBackgroundRemoveAi, runInpaint } from "./browser/tools";
 import { closeBrowser } from "./browser/session";
 
@@ -31,7 +32,100 @@ const server = new McpServer({
   version: "0.2.0",
 });
 
+/** Persist tool output(s) to the output dir and shape the MCP response. */
+async function writeResults(result: ImageResult | ImageResult[]) {
+  await mkdir(outputDir, { recursive: true });
+
+  if (Array.isArray(result)) {
+    const outputs: string[] = [];
+    for (const file of result) {
+      const filePath = path.join(outputDir, file.name);
+      await writeFile(filePath, file.buffer);
+      outputs.push(filePath);
+    }
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({ outputs, count: outputs.length }),
+        },
+      ],
+    };
+  }
+
+  const filePath = path.join(outputDir, result.name);
+  await writeFile(filePath, result.buffer);
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify({
+          output: filePath,
+          width: result.width,
+          height: result.height,
+          originalWidth: result.originalWidth,
+          originalHeight: result.originalHeight,
+        }),
+      },
+    ],
+  };
+}
+
+function toolError(e: unknown) {
+  return {
+    isError: true,
+    content: [{ type: "text" as const, text: (e as Error).message }],
+  };
+}
+
+/** Multi-image tools take a list of paths instead of a single one. */
+function registerMultiInputTool(tool: Extract<typeof tools[string], { multiInput: true }>) {
+  const minInputs = tool.minInputs ?? 2;
+  server.registerTool(
+    tool.name,
+    {
+      title: tool.title,
+      description: `${tool.description}\n输入为多张本地图片路径,处理结果写入输出目录,返回 JSON(包含输出文件路径)。`,
+      inputSchema: {
+        paths: z
+          .array(z.string())
+          .min(minInputs)
+          .describe(
+            "输入图片的本地绝对路径列表(" +
+              (minInputs > 1 ? "至少 " + minInputs + " 张,顺序即打包顺序" : "至少 1 张") +
+              ")"
+          ),
+        ...tool.params,
+      },
+    },
+    async (args) => {
+      const { paths: inputPaths, ...params } = args as Record<string, unknown> & {
+        paths: string[];
+      };
+      try {
+        const inputs: ToolInput[] = [];
+        for (const inputPath of inputPaths) {
+          inputs.push({
+            name: path.basename(inputPath),
+            buffer: await readFile(inputPath),
+          });
+        }
+        const baseName =
+          path.basename(inputPaths[0]).replace(/\.[^/.]+$/, "") || "image";
+        return await writeResults(await tool.runMulti(inputs, params, baseName));
+      } catch (e) {
+        return toolError(e);
+      }
+    }
+  );
+}
+
 for (const tool of Object.values(tools)) {
+  if (isMultiTool(tool)) {
+    registerMultiInputTool(tool);
+    continue;
+  }
+
   server.registerTool(
     tool.name,
     {
@@ -50,47 +144,9 @@ for (const tool of Object.values(tools)) {
         const input = await readFile(inputPath);
         const baseName =
           path.basename(inputPath).replace(/\.[^/.]+$/, "") || "image";
-        const result = await tool.run(input, params, baseName);
-
-        await mkdir(outputDir, { recursive: true });
-        if (Array.isArray(result)) {
-          const outputs: string[] = [];
-          for (const file of result) {
-            const filePath = path.join(outputDir, file.name);
-            await writeFile(filePath, file.buffer);
-            outputs.push(filePath);
-          }
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({ outputs, count: outputs.length }),
-              },
-            ],
-          };
-        }
-
-        const filePath = path.join(outputDir, result.name);
-        await writeFile(filePath, result.buffer);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                output: filePath,
-                width: result.width,
-                height: result.height,
-                originalWidth: result.originalWidth,
-                originalHeight: result.originalHeight,
-              }),
-            },
-          ],
-        };
+        return await writeResults(await tool.run(input, params, baseName));
       } catch (e) {
-        return {
-          isError: true,
-          content: [{ type: "text" as const, text: (e as Error).message }],
-        };
+        return toolError(e);
       }
     }
   );

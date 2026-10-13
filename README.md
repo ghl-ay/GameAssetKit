@@ -1,6 +1,6 @@
 # Image Master
 
-一个纯前端的图片处理工具，所有操作均在浏览器本地完成，**不会上传到服务器**。
+一个图片处理工具：原有 9 个工具全部在浏览器本地完成，**不会上传到服务器**；新增的 10 个游戏资源流水线工具由自托管服务端（`sharp`）处理——图片只经过你自己运行的 app 服务器进程，不会上传到第三方。
 
 ## ✨ 功能特性
 
@@ -56,6 +56,40 @@
 - 支持撤销操作
 - 首次使用需下载模型
 
+### 🎮 游戏资源流水线
+
+后 10 个工具是给游戏资源批处理准备的,和已有的 `sprite-splitter`(拆图)组成完整闭环:
+
+| 工具 | 作用 |
+|---|---|
+| `atlas-packer` | **多图**打包成一张图集(PNG/WebP)+ TexturePacker JSON Hash 元数据。MaxRects 装箱、`padding` 间距、`extrude` 把精灵边缘颜色外扩进留白、`trim` 先裁掉透明边、`powerOfTwo` 补成 2 的幂、`maxWidth`/`maxHeight` 限制尺寸 |
+| `trim` | 裁掉四周透明边,可加透明留白(`padding`)、补正方形(`square`)、补 2 的幂(`powerOfTwo`),`anchor` 指定内容落在画布的哪个位置 |
+| `alpha-bleed` | 把透明像素的 RGB 换成最近的可见像素颜色(边缘外扩),`alpha` 不变 —— 消除缩放、mipmap、图集采样时的黑边/灰边;`unpremultiply` 还原黑底预乘的半透明边缘 |
+| `sequence-to-sheet` | **多图**把序列帧排成等距网格的 spritesheet:每帧先取可见内容,再按 `anchor` 对齐到统一单元格(角色动画用 `bottom`/`bottom-center` 消除脚底漂移),`columns`/`padding`/`extrude`/`fps`/`powerOfTwo` |
+| `sheet-to-sequence` | 反方向:按网格(`padding` 感知)把 spritesheet 切成从 `0001` 开始补零的单帧 PNG,可 `trim` 每帧透明边;`cellWidth`/`cellHeight` 用于补过 2 的幂的图集 |
+| `nine-slice` | 九宫格(9-slice / nine-patch)UI 资源:输出 `borders`、`minimumSize` 与九个区域坐标的 JSON,并导出各区域切片 PNG(`slices=false` 时只输出 JSON 描述,适合批量分析)。边框可显式指定,也可自动识别(以中心像素为内部色,沿中间行/列扩展,装饰环与圆角都会算进边框) |
+| `palette-extract` | 统计图片实际使用的颜色(忽略全透明像素),输出带占比的调色板 JSON + 色板示意图;超过上限时 `quantize=true` 用 libimagequant 量化取色(默认),`false` 则按频率取前 N 种 |
+| `palette-swap` | 换肤/队伍色:按 `map` 显式 from→to 替换,或给 `palette` 由 `order`(luminance/frequency/first)排序后整份替换;`tolerance` 容忍接近色,输出替换后的 PNG + 记录命中数的 JSON |
+| `asset-lint` | 批量体检:**多图**检查 2 的幂(`powerOfTwo`)、整除对齐(`multipleOf`)、最大边长(`maxSize`)、格式白名单(`formats`)、透明通道(`alpha`)、单文件体积(`maxKilobytes`)、文件名正则(`namePattern`),并顺带查出扩展名与实际格式不符、全透明空图、内容重复的文件。返回带 `ok` / 汇总 / 每个文件问题清单的 JSON 报告 |
+| `png-optimize` | `mode=lossless` 用最高 zlib 力度无损重压;`mode=palette` 量化到 2-256 色(像素风资源常用) |
+
+典型链路:`sprite-splitter` / `sheet-to-sequence` → `trim` → `alpha-bleed` → `sequence-to-sheet`(序列帧)或 `atlas-packer`(静态图集) → `png-optimize` → `asset-lint`(提交前体检);UI 面板走 `nine-slice` 拿到九宫格参数;换肤变体走 `palette-extract`(取色)→ `palette-swap`(批量替换)。
+
+```bash
+bun cli.ts atlas-packer hero.png foe.png coin.png name=ui padding=4 trim=true powerOfTwo=true
+bun cli.ts trim hero.png padding=6 powerOfTwo=true anchor=bottom-right
+bun cli.ts alpha-bleed hero.png radius=6
+bun cli.ts png-optimize hero.png mode=palette colors=16
+bun cli.ts sequence-to-sheet walk_*.png name=walk columns=3 anchor=bottom fps=12
+bun cli.ts sheet-to-sequence walk.png columns=3 count=6 trim=true --out ./frames
+bun cli.ts nine-slice panel.png                      # 自动识别边框,导出 9 张切片 + JSON
+bun cli.ts nine-slice panel.png left=8 right=8 top=6 bottom=6
+bun cli.ts palette-extract orb.png                 # 调色板 JSON + 色板图
+bun cli.ts palette-swap orb.png 'palette=["#101a2b","#2f5a9a","#4d8fd6","#d9ecff"]' order=luminance
+bun cli.ts palette-swap orb.png 'map=[{"from":"#d1567a","to":"#3fae6a"}]'
+bun cli.ts asset-lint --dir ./assets powerOfTwo=true maxSize=2048
+```
+
 ### 🔗 工具联动
 
 - 所有工具之间可以互相传递图片，方便进行连续处理流程
@@ -84,6 +118,23 @@ bun dev
 
 打开 [http://localhost:3000](http://localhost:3000) 即可使用。
 
+### 🖥️ Web UI
+
+站点共 19 个工具页面:原有 9 个工具仍完全在浏览器里跑(不经过服务端);新增的 10 个游戏资源流水线工具是服务端(`sharp`)操作,页面如下:
+
+- `/atlas-packer` — 图集打包
+- `/sequence-to-sheet` — 序列帧打包
+- `/sheet-to-sequence` — 序列帧导出
+- `/nine-slice` — 九宫格切分
+- `/palette-swap` — 调色板替换
+- `/palette-extract` — 调色板提取
+- `/asset-lint` — 资源规范检查
+- `/trim` — 透明边裁剪
+- `/alpha-bleed` — Alpha 边缘外扩
+- `/png-optimize` — PNG 优化
+
+这 10 个页面共用一个面板组件 `app/components/ApiToolPanel.tsx`,选项 schema 定义在 `app/lib/api-tools.ts`,提交时调用本项目自己的 `POST /api/tools/{tool}`。因此它们需要 app 本身在运行(页面和接口都由它提供);原有 9 个工具不经过服务端,浏览器里即可完成。
+
 ## 📦 构建部署
 
 ```bash
@@ -104,11 +155,12 @@ bun start
 | **MCP Server** | stdio 方式挂载到支持 MCP 的 AI 客户端(ZCode、Claude、Cursor 等) |
 | **CLI** | 本地命令行批处理 |
 
-支持的工具有 10 个:
+支持的工具有 20 个:
 
-**服务端(sharp,HTTP API / MCP / CLI 均可用)**——7 个:`compress`(压缩/格式转换)、`resize`(缩放)、`crop`(裁剪)、`transform`(旋转/翻转)、`background-remover`(纯色抠图)、`sprite-splitter`(精灵图拆分)、`vectorize`(矢量化)。
+**服务端(sharp,HTTP API / MCP / CLI 均可用)**——17 个:`compress`(压缩/格式转换)、`resize`(缩放)、`crop`(裁剪)、`transform`(旋转/翻转)、`background-remover`(纯色抠图)、`sprite-splitter`(精灵图拆分)、`vectorize`(矢量化)、`atlas-packer`(图集打包)、`sequence-to-sheet`(序列帧打包)、`sheet-to-sequence`(序列帧导出)、`nine-slice`(九宫格切分)、`palette-swap`(调色板替换)、`palette-extract`(调色板提取)、`asset-lint`(资源规范检查)、`trim`(透明边裁剪)、`alpha-bleed`(Alpha 边缘外扩)、`png-optimize`(PNG 无损优化/调色板量化)。
 
 **浏览器 AI(MCP 专用,通过无头浏览器驱动)**——3 个:`upscale`(Real-ESRGAN 4x 超分)、`background-remover-ai`(ISNet AI 抠图 / ViTMatte 通道抠图)、`inpaint`(MiGAN 去水印/消除物体)。
+即 MCP 共 20 个工具(17 个服务端 + 3 个浏览器 AI);HTTP API 与 CLI 只提供上面 17 个服务端工具,3 个浏览器 AI 工具仅 MCP 可用。
 
 ### HTTP API
 
@@ -127,7 +179,19 @@ curl -X POST -H "Content-Type: application/json" \
   http://localhost:3000/api/tools/background-remover -o out.png
 ```
 
-多文件结果(如精灵图拆分)返回 `.zip`。`GET /api/tools/{tool}` 可查询单个工具的参数说明。
+多文件结果(如精灵图拆分、图集打包)返回 `.zip`。`GET /api/tools/{tool}` 可查询单个工具的参数说明。
+
+多图工具(如 `atlas-packer`)重复给 `file` 字段,或用 JSON 的 `images_base64` 数组:
+
+```bash
+curl -X POST -F "file=@hero.png" -F "file=@coin.png" \
+  -F 'options={"padding":4,"name":"ui"}' \
+  http://localhost:3000/api/tools/atlas-packer -o ui.zip
+
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"images_base64":["...","..."],"names":["hero.png","coin.png"],"options":{"padding":4}}' \
+  http://localhost:3000/api/tools/atlas-packer -o ui.zip
+```
 
 ### MCP Server
 
@@ -146,7 +210,7 @@ curl -X POST -H "Content-Type: application/json" \
 }
 ```
 
-每个工具接受本地图片路径参数 `path` 及各工具选项,处理结果写入输出目录并返回文件路径。
+每个工具接受本地图片路径参数 `path` 及各工具选项,处理结果写入输出目录并返回文件路径。多图工具(如 `atlas-packer`)用 `paths` 传路径数组。
 
 ### CLI
 
@@ -154,9 +218,13 @@ curl -X POST -H "Content-Type: application/json" \
 bun cli.ts compress a.png format=webp quality=70
 bun cli.ts resize a.png width=200 fit=cover
 bun cli.ts sprite-splitter sheet.png mode=grid columns=4 rows=2
+bun cli.ts atlas-packer a.png b.png c.png name=ui padding=4   # 多图工具直接给多个路径
+bun cli.ts asset-lint --dir ./assets powerOfTwo=true --fail-on-issues   # CI:报告 ok=false 时退出码 1
 ```
 
-输出默认写入 `./output/`,可用 `--out` 指定。运行 `bun cli.ts` 查看全部工具与参数。
+输出默认写入 `./output/`,可用 `--out` 指定;`--dir <folder>` 把文件夹内的图片批量作为输入(无需逐个列路径)。运行 `bun cli.ts` 查看全部工具与参数。
+
+`--fail-on-issues` 用于 CI:写出的 JSON 报告里 `ok === false` 时以退出码 1 结束(目前只有 `asset-lint` 会产出这种报告);环境变量 `IMAGE_MASTER_FAIL_ON_ISSUES=1` 等价。不加这个开关时退出码保持 0,已有脚本不受影响。
 
 ### AI 工具(MCP)
 
@@ -185,7 +253,7 @@ bun cli.ts sprite-splitter sheet.png mode=grid columns=4 rows=2
 
 ## 🌟 特点
 
-- 🔒 **隐私安全** - 所有处理均在浏览器本地完成，图片不会上传到服务器
+- 🔒 **隐私安全** - 原有 9 个工具的处理均在浏览器本地完成，图片不会上传到服务器；10 个流水线工具由自托管服务端（`sharp`）处理，只经过你自己运行的 app 服务器进程，不会上传到第三方
 - 🚀 **高性能** - 使用 Web Worker 多线程处理，不阻塞主线程
 - 📱 **响应式设计** - 适配桌面和移动设备
 - 🎯 **批量处理** - 大部分工具支持同时处理多张图片

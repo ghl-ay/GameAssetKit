@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import JSZip from "jszip";
-import { getTool, runTool, parseToolParams } from "../../../../core/registry";
+import {
+  getTool,
+  isMultiTool,
+  runTool,
+  parseToolParams,
+  type ToolInput,
+} from "../../../../core/registry";
 import type { ImageResult } from "../../../../core/types";
 
 export const runtime = "nodejs";
@@ -24,57 +30,79 @@ export async function GET(
     name: tool.name,
     title: tool.title,
     description: tool.description,
+    multiInput: isMultiTool(tool),
     params: z.toJSONSchema(z.object(tool.params)),
   });
 }
 
 /**
  * POST /api/tools/{tool} — run a tool.
- * Accepts multipart/form-data (fields: file, options as JSON string)
- * or application/json ({ image_base64, name?, options? }).
- * Returns the processed image; multi-image results come back as a zip.
+ * Accepts multipart/form-data (field: file, repeat it for multi-input tools;
+ * plus options as a JSON string) or application/json
+ * ({ image_base64, name?, options? } — or { images_base64: [...], names?: [...] }
+ * for multi-input tools).
+ * Returns the processed image; multi-file results come back as a zip.
  */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ tool: string }> }
 ) {
   const { tool: name } = await params;
-  if (!getTool(name)) {
+  const tool = getTool(name);
+  if (!tool) {
     return errorResponse(
       `Unknown tool: ${name}. See GET /api/tools for the list.`,
       404
     );
   }
+  const multi = isMultiTool(tool);
 
-  let input: Buffer;
-  let baseName = "image";
+  let inputs: ToolInput[] = [];
   let rawOptions: unknown = {};
 
   try {
     const contentType = req.headers.get("content-type") ?? "";
     if (contentType.includes("multipart/form-data")) {
       const form = await req.formData();
-      const file = form.get("file");
-      if (!(file instanceof File)) {
+      const files = form
+        .getAll("file")
+        .filter((entry): entry is File => entry instanceof File);
+      if (files.length === 0) {
         return errorResponse("multipart/form-data requires a 'file' field", 400);
       }
-      input = Buffer.from(await file.arrayBuffer());
-      baseName = file.name.replace(/\.[^/.]+$/, "") || "image";
+      inputs = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name || "image.png",
+          buffer: Buffer.from(await file.arrayBuffer()),
+        }))
+      );
       const optRaw = form.get("options");
       if (typeof optRaw === "string" && optRaw.trim()) {
         rawOptions = JSON.parse(optRaw);
       }
     } else {
       const body = await req.json();
-      if (typeof body.image_base64 !== "string") {
+      if (Array.isArray(body.images_base64)) {
+        const names: string[] = Array.isArray(body.names) ? body.names : [];
+        inputs = body.images_base64.map((data: string, index: number) => ({
+          name:
+            typeof names[index] === "string" && names[index]
+              ? names[index]
+              : `image_${index + 1}.png`,
+          buffer: Buffer.from(data, "base64"),
+        }));
+      } else if (typeof body.image_base64 === "string") {
+        inputs = [
+          {
+            name: typeof body.name === "string" && body.name ? body.name : "image.png",
+            buffer: Buffer.from(body.image_base64, "base64"),
+          },
+        ];
+      } else {
         return errorResponse(
-          "JSON body requires 'image_base64' (base64-encoded image)",
+          "JSON body requires 'image_base64' or 'images_base64' (base64-encoded images)",
           400
         );
-      }
-      input = Buffer.from(body.image_base64, "base64");
-      if (typeof body.name === "string" && body.name) {
-        baseName = body.name.replace(/\.[^/.]+$/, "");
       }
       rawOptions = body.options ?? {};
     }
@@ -82,15 +110,32 @@ export async function POST(
     return errorResponse(`Invalid request body: ${(e as Error).message}`, 400);
   }
 
+  const minInputs = isMultiTool(tool) ? (tool.minInputs ?? 2) : 1;
+  if (multi ? inputs.length < minInputs : inputs.length !== 1) {
+    return errorResponse(
+      multi
+        ? `Tool ${name} needs at least ${minInputs} input images`
+        : `Tool ${name} takes exactly one input image`,
+      400
+    );
+  }
+
   try {
     // Validate params up front so schema errors surface before processing.
-    parseToolParams(getTool(name)!, rawOptions);
+    parseToolParams(tool, rawOptions);
   } catch (e) {
     return errorResponse(`Invalid options: ${(e as Error).message}`, 400);
   }
 
+  const baseName = inputs[0].name.replace(/\.[^/.]+$/, "") || "image";
+
   try {
-    const result = await runTool(name, input, rawOptions, baseName);
+    const result = await runTool(
+      name,
+      multi ? inputs : inputs[0].buffer,
+      rawOptions,
+      baseName
+    );
 
     if (Array.isArray(result)) {
       if (result.length === 0) {
