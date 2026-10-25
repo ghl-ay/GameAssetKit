@@ -2,63 +2,34 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { TOOLS } from "../types";
-
-const TOOL_ICONS: Record<string, React.ReactNode> = {
-  eye: (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-    </svg>
-  ),
-  grid: (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
-    </svg>
-  ),
-  expand: (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-    </svg>
-  ),
-  resize: (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5h-4m4 0v-4m0 4l-5-5" />
-    </svg>
-  ),
-  compress: (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-    </svg>
-  ),
-  transform: (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-    </svg>
-  ),
-  edit: (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-    </svg>
-  ),
-  crop: (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4v16h16M7 20V8m0 0h12" />
-    </svg>
-  ),
-  vectorize: (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-    </svg>
-  ),
-};
+import { useEffect, useState } from "react";
+import { NAV_GROUPS } from "../types";
+import { ToolIcon } from "./tool-icons";
 
 export function Header() {
   const pathname = usePathname();
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const activeGroup = NAV_GROUPS.find((group) =>
+    group.tools.some((tool) => tool.path === pathname)
+  );
+  const activeTool = activeGroup?.tools.find((tool) => tool.path === pathname);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenGroup(null);
+        setMobileOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return (
-    <>
-      <header className="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
+    <div className="sticky top-0 z-40">
+      <header className="border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600">
@@ -98,29 +69,165 @@ export function Header() {
         </div>
       </header>
 
-      <nav className="border-b border-zinc-800 overflow-x-auto">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="flex gap-1">
-            {TOOLS.map((tool) => {
-              const isActive = pathname === tool.path;
+      <nav className="border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm">
+        {/* 桌面端：分类下拉导航 */}
+        <div
+          className="mx-auto hidden max-w-6xl px-6 md:block"
+          onMouseLeave={() => setOpenGroup(null)}
+        >
+          <div className="flex items-center gap-1">
+            {NAV_GROUPS.map((group) => {
+              const isActive = activeGroup?.key === group.key;
+              const isOpen = openGroup === group.key;
               return (
-                <Link
-                  key={tool.key}
-                  href={tool.path}
-                  className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${
-                    isActive
-                      ? "border-emerald-500 text-emerald-400"
-                      : "border-transparent text-zinc-500 hover:text-zinc-300"
-                  }`}
+                <div
+                  key={group.key}
+                  className="relative"
+                  onMouseEnter={() => setOpenGroup(group.key)}
                 >
-                  {TOOL_ICONS[tool.icon]}
-                  {tool.name}
-                </Link>
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => setOpenGroup(group.key)}
+                    className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                      isActive
+                        ? "border-emerald-500 text-emerald-400"
+                        : "border-transparent text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <ToolIcon icon={group.icon} className="h-4 w-4" />
+                    {group.name}
+                    <svg
+                      className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${
+                        isOpen ? "rotate-180" : ""
+                      }`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {isOpen && (
+                    <div
+                      className={`absolute left-0 top-full z-50 rounded-xl border border-zinc-800 bg-zinc-900 p-2 shadow-2xl shadow-black/60 ${
+                        group.wide ? "grid w-[32rem] grid-cols-2 gap-1" : "w-80"
+                      }`}
+                    >
+                      {group.tools.map((tool) => {
+                        const isCurrent = pathname === tool.path;
+                        return (
+                          <Link
+                            key={tool.key}
+                            href={tool.path}
+                            aria-current={isCurrent ? "page" : undefined}
+                            onClick={() => setOpenGroup(null)}
+                            className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors ${
+                              isCurrent
+                                ? "bg-emerald-500/10 text-emerald-400"
+                                : "text-zinc-200 hover:bg-zinc-800"
+                            }`}
+                          >
+                            <span
+                              className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                                isCurrent
+                                  ? "bg-emerald-500/15 text-emerald-400"
+                                  : "bg-zinc-800 text-zinc-400"
+                              }`}
+                            >
+                              <ToolIcon icon={tool.icon} className="h-4 w-4" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="flex items-center gap-1.5 text-sm font-medium">
+                                {tool.name}
+                                {tool.serverSide && (
+                                  <span className="rounded-full bg-zinc-800 px-1.5 py-px text-[10px] text-zinc-500">
+                                    本机服务
+                                  </span>
+                                )}
+                              </span>
+                              <span className="mt-0.5 block truncate text-xs text-zinc-500">
+                                {tool.description}
+                              </span>
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
         </div>
+
+        {/* 移动端：当前工具 + 工具菜单 */}
+        <div className="flex items-center justify-between px-4 py-2 md:hidden">
+          <span className="truncate text-sm text-zinc-400">
+            {activeTool ? (
+              <>
+                当前工具：<span className="font-medium text-emerald-400">{activeTool.name}</span>
+              </>
+            ) : (
+              "选择一个工具"
+            )}
+          </span>
+          <button
+            type="button"
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen((open) => !open)}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+          >
+            <ToolIcon icon={mobileOpen ? "close" : "menu"} className="h-4 w-4" />
+            工具
+          </button>
+        </div>
+        {mobileOpen && (
+          <div className="max-h-[70vh] overflow-y-auto border-t border-zinc-800 px-4 pb-4 pt-1 md:hidden">
+            {NAV_GROUPS.map((group) => (
+              <div key={group.key} className="py-3">
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  <ToolIcon icon={group.icon} className="h-3.5 w-3.5" />
+                  {group.name}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {group.tools.map((tool) => {
+                    const isCurrent = pathname === tool.path;
+                    return (
+                      <Link
+                        key={tool.key}
+                        href={tool.path}
+                        aria-current={isCurrent ? "page" : undefined}
+                        onClick={() => setMobileOpen(false)}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                          isCurrent
+                            ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
+                            : "border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-800"
+                        }`}
+                      >
+                        <ToolIcon icon={tool.icon} className="h-4 w-4 shrink-0 text-current" />
+                        <span className="truncate">{tool.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </nav>
-    </>
+
+      {/* 打开下拉时罩住页面，点击空白处收起 */}
+      {openGroup && (
+        <div
+          className="fixed inset-0 -z-10"
+          aria-hidden="true"
+          onClick={() => setOpenGroup(null)}
+        />
+      )}
+    </div>
   );
 }
