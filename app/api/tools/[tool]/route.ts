@@ -16,6 +16,16 @@ function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
+/**
+ * RFC 6266/5987 Content-Disposition: HTTP headers are ByteStrings, so non-ASCII
+ * file names (e.g. Chinese) must go into the `filename*` parameter; the plain
+ * `filename` keeps a sanitized ASCII fallback for older clients.
+ */
+function contentDisposition(type: "inline" | "attachment", name: string): string {
+  const asciiFallback = name.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "'");
+  return `${type}; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
 /** GET /api/tools/{tool} — describe a single tool. */
 export async function GET(
   _req: NextRequest,
@@ -149,7 +159,7 @@ export async function POST(
       return new NextResponse(new Uint8Array(zipBuffer), {
         headers: {
           "Content-Type": "application/zip",
-          "Content-Disposition": `attachment; filename="${baseName}_${name}.zip"`,
+          "Content-Disposition": contentDisposition("attachment", `${baseName}_${name}.zip`),
           "X-File-Count": String(result.length),
         },
       });
@@ -164,7 +174,7 @@ export async function POST(
 function imageResponse(result: ImageResult) {
   const headers: Record<string, string> = {
     "Content-Type": result.contentType,
-    "Content-Disposition": `inline; filename="${result.name}"`,
+    "Content-Disposition": contentDisposition("inline", result.name),
   };
   if (result.width !== undefined) headers["X-Image-Width"] = String(result.width);
   if (result.height !== undefined) headers["X-Image-Height"] = String(result.height);
