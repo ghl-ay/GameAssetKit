@@ -73,6 +73,8 @@ let page: Page | null = null;
 
 async function launchContext(): Promise<BrowserContext> {
   const proxy = process.env.IMAGE_MASTER_BROWSER_PROXY;
+  const proxyBypass =
+    process.env.IMAGE_MASTER_BROWSER_PROXY_BYPASS ?? "localhost,127.0.0.1,::1,*.local";
   const channel = process.env.IMAGE_MASTER_BROWSER_CHANNEL ?? "msedge";
   const headless = process.env.IMAGE_MASTER_BROWSER_HEADLESS !== "false";
 
@@ -81,7 +83,7 @@ async function launchContext(): Promise<BrowserContext> {
     channel,
     acceptDownloads: true,
     viewport: { width: 1440, height: 1000 },
-    ...(proxy ? { proxy: { server: proxy } } : {}),
+    ...(proxy ? { proxy: { server: proxy, bypass: proxyBypass } } : {}),
   } as const;
 
   try {
