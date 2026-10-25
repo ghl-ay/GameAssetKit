@@ -35,6 +35,7 @@ import {
 } from "./palette";
 import { planSequence, resolveGrid } from "./sequence";
 import { contentBox, nextPowerOfTwo } from "./trim";
+import { extractVideoFrames } from "./video-to-frames";
 import type { RawImage } from "./types";
 
 export interface ToolParamSchema {
@@ -926,6 +927,52 @@ export const tools: Record<string, AnyToolDef> = {
       });
 
       return results;
+    },
+  },
+
+  "video-to-frames": {
+    name: "video-to-frames",
+    title: "视频转序列帧",
+    description:
+      "用 ffmpeg 把视频(mp4/webm/mov/gif 等)抽成序列帧图片。fps 省略时提取每一帧;start/end 按秒截取时间段;width/scale 等比缩小输出;webm(VP9) 等带透明通道的视频可产出带 alpha 的帧。输出帧图片 + 元数据 JSON。",
+    params: {
+      fps: z
+        .number()
+        .min(0.1)
+        .max(120)
+        .optional()
+        .describe("提取帧率,每秒几帧;省略则提取每一帧"),
+      start: z.number().min(0).optional().describe("开始时间(秒)"),
+      end: z
+        .number()
+        .min(0)
+        .optional()
+        .describe("结束时间(秒);end-start 为截取时长"),
+      width: z
+        .number()
+        .int()
+        .min(8)
+        .max(4096)
+        .optional()
+        .describe("输出宽度 px,等比缩放;与 scale 二选一"),
+      scale: z
+        .number()
+        .min(0.01)
+        .max(4)
+        .optional()
+        .describe("缩放系数;与 width 二选一"),
+      format: z.enum(["png", "webp", "jpeg"]).optional().describe("输出格式,默认 png"),
+      maxFrames: z
+        .number()
+        .int()
+        .min(1)
+        .max(2000)
+        .optional()
+        .describe("最多提取帧数,默认 300"),
+      name: z.string().optional().describe("输出帧名前缀,默认用视频文件名"),
+    },
+    async run(input, params, baseName) {
+      return extractVideoFrames(input, params, baseName);
     },
   },
 

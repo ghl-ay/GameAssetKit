@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getApiTool, type ApiToolOption } from "../lib/api-tools";
 import { TOOLS } from "../types";
 import { DropdownMenu } from "./DropdownMenu";
+import { ImageLightbox } from "./ImageLightbox";
 import { useFileTransfer } from "./FileTransferProvider";
 
 interface OutputFile {
@@ -79,6 +80,15 @@ function humanSize(bytes: number): string {
 
 function fileNameFrom(response: Response, fallback: string): string {
   const disposition = response.headers.get("content-disposition") ?? "";
+  // RFC 5987 encoded name carries non-ASCII (Chinese) file names intact.
+  const encoded = /filename\*=(?:utf-8|UTF-8)''([^;]+)/.exec(disposition)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      // malformed encoding: fall back to the plain filename below
+    }
+  }
   return /filename="([^"]+)"/.exec(disposition)?.[1] ?? fallback;
 }
 
@@ -188,7 +198,9 @@ export function ApiToolPanel({ toolKey, description, onHasFilesChange }: ApiTool
   const [error, setError] = useState("");
   const [outputs, setOutputs] = useState<OutputFile[]>([]);
   const [zipUrl, setZipUrl] = useState("");
+  const [zipName, setZipName] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [lightbox, setLightbox] = useState<OutputFile | null>(null);
 
   const urlsRef = useRef<string[]>([]);
   const trackUrl = useCallback((url: string) => {
@@ -201,6 +213,7 @@ export function ApiToolPanel({ toolKey, description, onHasFilesChange }: ApiTool
     urlsRef.current = [];
     setOutputs([]);
     setZipUrl("");
+    setZipName("");
   }, []);
 
   useEffect(
@@ -296,6 +309,7 @@ export function ApiToolPanel({ toolKey, description, onHasFilesChange }: ApiTool
         collected.sort((a, b) => (a.kind === "json" ? 1 : 0) - (b.kind === "json" ? 1 : 0));
         setOutputs(collected);
         setZipUrl(trackUrl(URL.createObjectURL(blob)));
+        setZipName(fileNameFrom(response, `${config.apiTool}.zip`));
       } else if (contentType.includes("application/json")) {
         const text = await response.text();
         const blob = new Blob([text], { type: "application/json" });
@@ -324,6 +338,11 @@ export function ApiToolPanel({ toolKey, description, onHasFilesChange }: ApiTool
   const imageFiles = outputs
     .filter((output) => output.kind === "image")
     .map((output) => new File([output.blob], output.name, { type: output.blob.type || "image/png" }));
+
+  // 序列帧一类的大量图片输出改用缩略图网格,避免竖排几十上百个大预览。
+  const imageOutputs = outputs.filter((output) => output.kind === "image");
+  const otherOutputs = outputs.filter((output) => output.kind !== "image");
+  const useGrid = imageOutputs.length > 12;
 
   if (!config) {
     return (
@@ -367,7 +386,9 @@ export function ApiToolPanel({ toolKey, description, onHasFilesChange }: ApiTool
           <p className="mb-1 text-sm text-zinc-300">
             {config.inputs === "multiple"
               ? `点击或拖拽上传 ${config.minInputs ?? 2} 张以上图片`
-              : "点击或拖拽上传图片"}
+              : config.accept?.startsWith("video")
+                ? "点击或拖拽上传视频"
+                : "点击或拖拽上传图片"}
           </p>
           <p className="text-xs text-zinc-500">{description ?? config.description}</p>
         </div>
@@ -509,7 +530,7 @@ export function ApiToolPanel({ toolKey, description, onHasFilesChange }: ApiTool
               {zipUrl && (
                 <a
                   href={zipUrl}
-                  download={`${config.apiTool}.zip`}
+                  download={zipName || `${config.apiTool}.zip`}
                   className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-emerald-500"
                 >
                   下载全部 (ZIP)
@@ -532,8 +553,30 @@ export function ApiToolPanel({ toolKey, description, onHasFilesChange }: ApiTool
             </div>
           </div>
 
-          <div className="space-y-3">
-            {outputs.map((output) => (
+          {useGrid && (
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+              {imageOutputs.map((output) => (
+                <button
+                  key={output.name}
+                  type="button"
+                  title={`${output.name} · ${humanSize(output.blob.size)}`}
+                  onClick={() => setLightbox(output)}
+                  className="overflow-hidden rounded-lg bg-[repeating-conic-gradient(#27272a_0%_25%,#18181b_0%_50%)] bg-[length:16px_16px] transition-opacity hover:opacity-80"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={output.url}
+                    alt={output.name}
+                    loading="lazy"
+                    className="aspect-square w-full object-contain"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className={useGrid ? "mt-3 space-y-3" : "space-y-3"}>
+            {(useGrid ? otherOutputs : outputs).map((output) => (
               <div key={output.name} className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="truncate font-mono text-xs text-zinc-300">{output.name}</span>
@@ -563,6 +606,10 @@ export function ApiToolPanel({ toolKey, description, onHasFilesChange }: ApiTool
             ))}
           </div>
         </div>
+      )}
+
+      {lightbox && (
+        <ImageLightbox src={lightbox.url} alt={lightbox.name} onClose={() => setLightbox(null)} />
       )}
     </div>
   );

@@ -18,6 +18,62 @@ export interface ToolConfig {
 export const SITE_URL = "https://image.moonrailgun.com";
 export const SITE_NAME = "Image Master";
 
+export interface ToolGroupDef {
+  key: string;
+  name: string;
+  /** 图标 key，见 components/tool-icons.tsx */
+  icon: string;
+  /** 下拉面板是否用双列布局（工具较多时） */
+  wide?: boolean;
+  toolKeys: string[];
+}
+
+/** 导航栏的工具分组，key 对应 TOOLS 里的 key；解析成 ToolConfig 见文件末尾的 NAV_GROUPS */
+export const TOOL_GROUPS: ToolGroupDef[] = [
+  {
+    key: "image",
+    name: "图片处理",
+    icon: "crop",
+    wide: true,
+    toolKeys: [
+      "background",
+      "compress",
+      "resize",
+      "transform",
+      "crop",
+      "trim",
+      "alpha-bleed",
+      "png-optimize",
+    ],
+  },
+  {
+    key: "ai",
+    name: "AI 增强",
+    icon: "sparkles",
+    toolKeys: ["upscale", "inpaint"],
+  },
+  {
+    key: "color",
+    name: "颜色与矢量",
+    icon: "palette",
+    toolKeys: ["vectorize", "palette-swap", "palette-extract"],
+  },
+  {
+    key: "game",
+    name: "游戏资源",
+    icon: "grid",
+    toolKeys: [
+      "sprite",
+      "atlas-packer",
+      "video-to-frames",
+      "sequence-to-sheet",
+      "sheet-to-sequence",
+      "nine-slice",
+      "asset-lint",
+    ],
+  },
+];
+
 export const TOOLS: ToolConfig[] = [
   {
     key: "background",
@@ -155,6 +211,18 @@ export const TOOLS: ToolConfig[] = [
     serverSide: true,
   },
   {
+    key: "video-to-frames",
+    path: "/video-to-frames",
+    name: "视频转序列帧",
+    description:
+      "把视频（mp4/webm/mov/gif 等）按帧率抽成序列帧图片，可截取时间段、等比缩放，带透明通道的 webm 可导出透明帧，一键发送到序列帧打包。",
+    seoTitle: "视频转序列帧 - MP4/WebM 在线抽帧导出 PNG 序列",
+    seoDescription:
+      "在线视频转序列帧工具，把特效录像等视频按帧率抽成 PNG/WebP 序列帧，支持截取时间段、等比缩放与帧数上限；带透明通道的 webm 可导出透明帧，可直接发送到序列帧打包合成 spritesheet。",
+    icon: "film",
+    serverSide: true,
+  },
+  {
     key: "nine-slice",
     path: "/nine-slice",
     name: "九宫格切分",
@@ -239,3 +307,11 @@ export const TOOLS: ToolConfig[] = [
     serverSide: true,
   },
 ];
+
+/** TOOL_GROUPS 解析成 ToolConfig 列表，供导航直接渲染（须在 TOOLS 之后求值） */
+export const NAV_GROUPS = TOOL_GROUPS.map((group) => ({
+  ...group,
+  tools: group.toolKeys
+    .map((key) => TOOLS.find((tool) => tool.key === key))
+    .filter((tool): tool is ToolConfig => Boolean(tool)),
+}));

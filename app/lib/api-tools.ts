@@ -685,6 +685,91 @@ const PNG_OPTIMIZE: ApiToolConfig = {
   ],
 };
 
+const VIDEO_TO_FRAMES: ApiToolConfig = {
+  key: "video-to-frames",
+  apiTool: "video-to-frames",
+  title: "视频转序列帧",
+  description:
+    "把视频(mp4/webm/mov/gif 等)按帧率抽成 PNG/WebP/JPEG 序列帧,可截取时间段、等比缩放;带透明通道的 webm 可导出透明帧。",
+  inputs: "single",
+  accept: "video/*,image/gif,.mkv,.mov,.webm,.avi,.m4v",
+  note: "建议视频不超过 200MB;超过「最多帧数」的帧会被截断,处理由本机服务完成",
+  options: [
+    {
+      name: "fps",
+      label: "提取帧率 (fps)",
+      kind: "number",
+      min: 0.1,
+      max: 120,
+      step: 0.1,
+      placeholder: "留白 = 每一帧",
+      help: "每秒提取几帧;不填则提取视频里的每一帧",
+    },
+    {
+      name: "start",
+      label: "开始时间 (秒)",
+      kind: "number",
+      min: 0,
+      step: 0.1,
+      placeholder: "0",
+    },
+    {
+      name: "end",
+      label: "结束时间 (秒)",
+      kind: "number",
+      min: 0,
+      step: 0.1,
+      placeholder: "视频结尾",
+      help: "与开始时间一起截取时间段",
+    },
+    {
+      name: "width",
+      label: "输出宽度 (px)",
+      kind: "number",
+      min: 8,
+      max: 4096,
+      placeholder: "原尺寸",
+      help: "等比缩放,游戏素材常用 256~512;与缩放系数二选一",
+    },
+    {
+      name: "scale",
+      label: "缩放系数",
+      kind: "number",
+      min: 0.01,
+      max: 4,
+      step: 0.05,
+      placeholder: "1",
+      help: "如 0.5 = 尺寸减半;与输出宽度二选一",
+    },
+    {
+      name: "format",
+      label: "输出格式",
+      kind: "enum",
+      defaultValue: "png",
+      choices: [
+        { value: "png", label: "PNG (支持透明)" },
+        { value: "webp", label: "WebP (体积小,支持透明)" },
+        { value: "jpeg", label: "JPEG (无透明)" },
+      ],
+    },
+    {
+      name: "maxFrames",
+      label: "最多帧数",
+      kind: "number",
+      min: 1,
+      max: 2000,
+      defaultValue: 300,
+      help: "安全上限,防止长视频占用过多内存",
+    },
+    {
+      name: "name",
+      label: "输出帧名前缀",
+      kind: "text",
+      placeholder: "默认用视频文件名",
+    },
+  ],
+};
+
 export const API_TOOLS: ApiToolConfig[] = [
   ATLAS_PACKER,
   SEQUENCE_TO_SHEET,
@@ -696,6 +781,7 @@ export const API_TOOLS: ApiToolConfig[] = [
   TRIM,
   ALPHA_BLEED,
   PNG_OPTIMIZE,
+  VIDEO_TO_FRAMES,
 ];
 
 /** Look up a tool config; returns undefined for unknown keys. */

@@ -15,6 +15,7 @@ const EXPECTED_KEYS = [
   "trim",
   "alpha-bleed",
   "png-optimize",
+  "video-to-frames",
 ];
 
 interface JsonField {

@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     template: `%s | ${SITE_NAME}`,
   },
   description:
-    "Image Master 提供9款免费在线图片处理工具：背景扣除、精灵图拆分、AI超分放大、尺寸调整、图片压缩、旋转翻转、AI修复、裁剪、矢量化。所有处理在浏览器本地完成，保护隐私安全。",
+    "Image Master 提供20款免费在线图片处理工具：抠图、压缩、放大、裁剪、矢量化，以及图集打包、序列帧、视频抽帧、九宫格、调色板等游戏资源流水线工具。基础处理在浏览器本地完成，保护隐私安全。",
   keywords: [
     "图片处理",
     "在线工具",
@@ -44,13 +44,13 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     title: `${SITE_NAME} - 免费在线图片处理工具箱`,
     description:
-      "9款免费在线图片处理工具，涵盖抠图、压缩、放大、裁剪、矢量化。纯前端处理，保护隐私。",
+      "20款免费在线图片处理工具，涵盖抠图、压缩、放大、裁剪、矢量化与游戏资源流水线。本地处理，保护隐私。",
   },
   twitter: {
     card: "summary_large_image",
     title: `${SITE_NAME} - 免费在线图片处理工具箱`,
     description:
-      "9款免费在线图片处理工具，涵盖抠图、压缩、放大、裁剪、矢量化。纯前端处理，保护隐私。",
+      "20款免费在线图片处理工具，涵盖抠图、压缩、放大、裁剪、矢量化与游戏资源流水线。本地处理，保护隐私。",
   },
   robots: {
     index: true,
