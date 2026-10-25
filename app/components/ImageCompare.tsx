@@ -32,6 +32,8 @@ export function ImageCompare({
   );
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const afterImgRef = useRef<HTMLImageElement>(null);
+  const [fitHeight, setFitHeight] = useState<number | null>(null);
   const [beforeUrl, setBeforeUrl] = useState<string | null>(null);
   const [afterUrl, setAfterUrl] = useState<string | null>(null);
 
@@ -121,6 +123,34 @@ export function ImageCompare({
     [handleMove]
   );
 
+  // Callers constrain the compare area with max-h classes; scale the image to
+  // fit that height (centered) instead of letting overflow-hidden crop tall
+  // portraits down to their top edge.
+  const measureFit = useCallback(() => {
+    const container = containerRef.current;
+    const img = afterImgRef.current;
+    if (!container || !img || !img.naturalWidth || !img.naturalHeight) {
+      setFitHeight(null);
+      return;
+    }
+    const maxHeight = parseFloat(getComputedStyle(container).maxHeight);
+    const naturalHeight = (container.clientWidth * img.naturalHeight) / img.naturalWidth;
+    setFitHeight(
+      Number.isFinite(maxHeight) && maxHeight > 0 && naturalHeight > maxHeight
+        ? maxHeight
+        : null
+    );
+  }, []);
+
+  useEffect(() => {
+    measureFit();
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measureFit);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [measureFit, afterUrl, beforeUrl]);
+
   // Global mouse events for dragging
   useEffect(() => {
     if (isDragging) {
@@ -144,12 +174,15 @@ export function ImageCompare({
       onClick={handleContainerClick}
       style={{ cursor: "ew-resize" }}
     >
-      {/* After image (full width, shown on right) */}
+      {/* After image (fit to container, shown on right) */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={afterImgRef}
         src={afterUrl}
         alt={afterAlt}
-        className="block h-auto w-full"
+        onLoad={measureFit}
+        className={`mx-auto block ${fitHeight === null ? "h-auto w-full" : ""}`}
+        style={fitHeight !== null ? { height: fitHeight, width: "auto" } : undefined}
         draggable={false}
       />
 
@@ -162,7 +195,9 @@ export function ImageCompare({
         <img
           src={beforeUrl}
           alt={beforeAlt}
-          className="block h-auto w-full"
+          onLoad={measureFit}
+          className={`mx-auto block ${fitHeight === null ? "h-auto w-full" : ""}`}
+          style={fitHeight !== null ? { height: fitHeight, width: "auto" } : undefined}
           draggable={false}
         />
       </div>
