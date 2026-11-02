@@ -192,14 +192,14 @@ server.registerTool(
   {
     title: "AI 背景扣除",
     description:
-      "AI 智能抠图:mode=ai 使用 ISNet 深度学习模型自动识别主体并移除背景;mode=channel 使用 ViTMatte 按颜色通道抠图。输出透明背景 PNG。首次调用会下载模型并缓存。",
+      "AI 智能抠图:mode=ai 使用 ISNet 深度学习模型自动识别主体并移除背景,可选 model(isnet 精度最高/isnet_fp16 均衡/isnet_quint8 体积最小速度最快,省略时用页面默认 quint8);mode=channel 按颜色通道阈值抠图。输出透明背景 PNG。首次调用会下载模型并缓存。",
     inputSchema: {
       path: z.string().describe("输入图片的本地绝对路径"),
       mode: z.enum(["ai", "channel"]).optional().describe("抠图模式,默认 ai"),
       model: z
         .enum(["isnet", "isnet_fp16", "isnet_quint8"])
         .optional()
-        .describe("ai 模式使用的 ISNet 模型,默认 isnet"),
+        .describe("ai 模式使用的 ISNet 模型;省略时用页面默认(quint8,速度最快)"),
       outDir: z.string().optional().describe("输出目录,默认 IMAGE_MASTER_OUTPUT_DIR"),
     },
   },

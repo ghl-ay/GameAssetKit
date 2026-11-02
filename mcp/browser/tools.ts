@@ -102,19 +102,49 @@ export interface BackgroundRemoveAiOptions {
   model?: "isnet" | "isnet_fp16" | "isnet_quint8";
 }
 
+/**
+ * AI 模型选项按钮的可访问名前缀（UI 会把描述拼进按钮名，故只锚定开头）。
+ * 省略 model 时不点击，走页面默认（quint8）。
+ */
+const MODEL_BUTTON_NAME: Record<NonNullable<BackgroundRemoveAiOptions["model"]>, RegExp> = {
+  isnet: /^标准/,
+  isnet_fp16: /^高性能/,
+  isnet_quint8: /^轻量/,
+};
+
 export async function runBackgroundRemoveAi(
   inputPath: string,
   options: BackgroundRemoveAiOptions = {}
 ): Promise<string> {
-  const page = await getPage();
-  await openTool(page, "/background-remover", inputPath, 'button:has-text("AI 智能")');
+  // 冷 profile 首次加载时页面会重挂载（dev HMR/首编译），模式点击可能间歇性
+  // 落空，与上传一样整段重试。
+  let lastError: unknown;
+  let page: Page | undefined;
+  for (let attempt = 0; attempt < UPLOAD_ATTEMPTS; attempt++) {
+    try {
+      page = await getPage();
+      await openTool(page, "/background-remover", inputPath, 'button:has-text("AI 智能")');
 
-  if ((options.mode ?? "ai") === "channel") {
-    await page.getByRole("button", { name: "按通道" }).click();
-    await page.getByRole("button", { name: "通道抠图" }).click();
-  } else {
-    await page.getByRole("button", { name: "AI 智能" }).click();
-    await page.getByRole("button", { name: "AI 一键移除背景" }).click();
+      if ((options.mode ?? "ai") === "channel") {
+        await page.getByRole("button", { name: "按通道" }).click();
+        await page.getByRole("button", { name: "通道抠图" }).click();
+      } else {
+        await page.getByRole("button", { name: "AI 智能" }).click();
+        if (options.model) {
+          await page.getByRole("button", { name: MODEL_BUTTON_NAME[options.model] }).click();
+        }
+        await page.getByRole("button", { name: "AI 一键移除背景" }).click();
+      }
+      break;
+    } catch (error) {
+      lastError = error;
+      page = undefined;
+    }
+  }
+  if (!page) {
+    throw new Error(
+      `selecting options on /background-remover failed after ${UPLOAD_ATTEMPTS} attempts: ${(lastError as Error)?.message ?? "unknown"}`
+    );
   }
 
   await page.getByRole("button", { name: "下载图片" }).waitFor({ state: "visible", timeout: RESULT_BUTTON_TIMEOUT });
