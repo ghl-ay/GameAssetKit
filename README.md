@@ -1,6 +1,6 @@
 # Image Master
 
-一个图片处理工具：原有 9 个工具全部在浏览器本地完成，**不会上传到服务器**；新增的 10 个游戏资源流水线工具由自托管服务端（`sharp`）处理——图片只经过你自己运行的 app 服务器进程，不会上传到第三方。
+一个图片处理工具：原有 9 个工具全部在浏览器本地完成，**不会上传到服务器**；新增的 11 个游戏资源流水线工具由自托管服务端（`sharp`）处理——图片只经过你自己运行的 app 服务器进程，不会上传到第三方。
 
 ## ✨ 功能特性
 
@@ -18,6 +18,8 @@
 - 可调整颜色容差范围
 - 边缘羽化功能，减少锯齿感
 - 仅处理连续像素选项，精确控制扣除区域
+- AI 智能模式：ISNet 深度学习模型自动识别主体，默认请求 WebGPU 加速（不可用时自动回退 CPU），可选标准 / 高性能 / 轻量（默认，42MB）三档模型
+- 通道抠图模式：按颜色通道阈值提取内容，适合绿幕/蓝幕、白纸黑字等前后景在某一通道差异明显的场景
 
 ### 🔍 AI 超分放大 (Super Resolution)
 
@@ -58,13 +60,14 @@
 
 ### 🎮 游戏资源流水线
 
-后 10 个工具是给游戏资源批处理准备的,和已有的 `sprite-splitter`(拆图)组成完整闭环:
+后 11 个工具是给游戏资源批处理准备的,和已有的 `sprite-splitter`(拆图)组成完整闭环:
 
 | 工具 | 作用 |
 |---|---|
 | `atlas-packer` | **多图**打包成一张图集(PNG/WebP)+ TexturePacker JSON Hash 元数据。MaxRects 装箱、`padding` 间距、`extrude` 把精灵边缘颜色外扩进留白、`trim` 先裁掉透明边、`powerOfTwo` 补成 2 的幂、`maxWidth`/`maxHeight` 限制尺寸 |
 | `trim` | 裁掉四周透明边,可加透明留白(`padding`)、补正方形(`square`)、补 2 的幂(`powerOfTwo`),`anchor` 指定内容落在画布的哪个位置 |
 | `alpha-bleed` | 把透明像素的 RGB 换成最近的可见像素颜色(边缘外扩),`alpha` 不变 —— 消除缩放、mipmap、图集采样时的黑边/灰边;`unpremultiply` 还原黑底预乘的半透明边缘 |
+| `video-to-frames` | 用内置 ffmpeg 把视频(mp4/webm/mov/gif 等)抽成序列帧:`fps` 省略时逐帧提取,`start`/`end` 按秒截取,`width`/`scale` 等比缩放,`format` 可选 png/webp/jpeg,`maxFrames` 限制帧数(默认 300);带透明通道的 WebM(VP9)可产出带 alpha 的帧。输出帧图片 + 元数据 JSON |
 | `sequence-to-sheet` | **多图**把序列帧排成等距网格的 spritesheet:每帧先取可见内容,再按 `anchor` 对齐到统一单元格(角色动画用 `bottom`/`bottom-center` 消除脚底漂移),`columns`/`padding`/`extrude`/`fps`/`powerOfTwo` |
 | `sheet-to-sequence` | 反方向:按网格(`padding` 感知)把 spritesheet 切成从 `0001` 开始补零的单帧 PNG,可 `trim` 每帧透明边;`cellWidth`/`cellHeight` 用于补过 2 的幂的图集 |
 | `nine-slice` | 九宫格(9-slice / nine-patch)UI 资源:输出 `borders`、`minimumSize` 与九个区域坐标的 JSON,并导出各区域切片 PNG(`slices=false` 时只输出 JSON 描述,适合批量分析)。边框可显式指定,也可自动识别(以中心像素为内部色,沿中间行/列扩展,装饰环与圆角都会算进边框) |
@@ -73,7 +76,7 @@
 | `asset-lint` | 批量体检:**多图**检查 2 的幂(`powerOfTwo`)、整除对齐(`multipleOf`)、最大边长(`maxSize`)、格式白名单(`formats`)、透明通道(`alpha`)、单文件体积(`maxKilobytes`)、文件名正则(`namePattern`),并顺带查出扩展名与实际格式不符、全透明空图、内容重复的文件。返回带 `ok` / 汇总 / 每个文件问题清单的 JSON 报告 |
 | `png-optimize` | `mode=lossless` 用最高 zlib 力度无损重压;`mode=palette` 量化到 2-256 色(像素风资源常用) |
 
-典型链路:`sprite-splitter` / `sheet-to-sequence` → `trim` → `alpha-bleed` → `sequence-to-sheet`(序列帧)或 `atlas-packer`(静态图集) → `png-optimize` → `asset-lint`(提交前体检);UI 面板走 `nine-slice` 拿到九宫格参数;换肤变体走 `palette-extract`(取色)→ `palette-swap`(批量替换)。
+典型链路:`sprite-splitter` / `sheet-to-sequence` → `trim` → `alpha-bleed` → `sequence-to-sheet`(序列帧)或 `atlas-packer`(静态图集) → `png-optimize` → `asset-lint`(提交前体检);视频素材走 `video-to-frames` →(可选 AI 抠图)→ `sequence-to-sheet` / `atlas-packer`;UI 面板走 `nine-slice` 拿到九宫格参数;换肤变体走 `palette-extract`(取色)→ `palette-swap`(批量替换)。
 
 ```bash
 bun cli.ts atlas-packer hero.png foe.png coin.png name=ui padding=4 trim=true powerOfTwo=true
@@ -82,6 +85,7 @@ bun cli.ts alpha-bleed hero.png radius=6
 bun cli.ts png-optimize hero.png mode=palette colors=16
 bun cli.ts sequence-to-sheet walk_*.png name=walk columns=3 anchor=bottom fps=12
 bun cli.ts sheet-to-sequence walk.png columns=3 count=6 trim=true --out ./frames
+bun cli.ts video-to-frames walk.mp4 fps=12 width=512 --out ./frames
 bun cli.ts nine-slice panel.png                      # 自动识别边框,导出 9 张切片 + JSON
 bun cli.ts nine-slice panel.png left=8 right=8 top=6 bottom=6
 bun cli.ts palette-extract orb.png                 # 调色板 JSON + 色板图
@@ -120,8 +124,9 @@ bun dev
 
 ### 🖥️ Web UI
 
-站点共 19 个工具页面:原有 9 个工具仍完全在浏览器里跑(不经过服务端);新增的 10 个游戏资源流水线工具是服务端(`sharp`)操作,页面如下:
+站点共 20 个工具页面:原有 9 个工具仍完全在浏览器里跑(不经过服务端);新增的 11 个游戏资源流水线工具是服务端操作(主要为 `sharp`,视频抽帧走内置 ffmpeg),页面如下:
 
+- `/video-to-frames` — 视频转序列帧
 - `/atlas-packer` — 图集打包
 - `/sequence-to-sheet` — 序列帧打包
 - `/sheet-to-sequence` — 序列帧导出
@@ -133,7 +138,7 @@ bun dev
 - `/alpha-bleed` — Alpha 边缘外扩
 - `/png-optimize` — PNG 优化
 
-这 10 个页面共用一个面板组件 `app/components/ApiToolPanel.tsx`,选项 schema 定义在 `app/lib/api-tools.ts`,提交时调用本项目自己的 `POST /api/tools/{tool}`。因此它们需要 app 本身在运行(页面和接口都由它提供);原有 9 个工具不经过服务端,浏览器里即可完成。
+这些流水线页面统一调用本项目自己的 `POST /api/tools/{tool}`;大部分共用面板组件 `app/components/ApiToolPanel.tsx`(选项 schema 定义在 `app/lib/api-tools.ts`),视频转序列帧使用自己的页面组件(`app/(tools)/video-to-frames/client.tsx`)。因此它们需要 app 本身在运行(页面和接口都由它提供);原有 9 个工具不经过服务端,浏览器里即可完成。
 
 ## 📦 构建部署
 
@@ -155,12 +160,12 @@ bun start
 | **MCP Server** | stdio 方式挂载到支持 MCP 的 AI 客户端(ZCode、Claude、Cursor 等) |
 | **CLI** | 本地命令行批处理 |
 
-支持的工具有 20 个:
+支持的工具有 21 个:
 
-**服务端(sharp,HTTP API / MCP / CLI 均可用)**——17 个:`compress`(压缩/格式转换)、`resize`(缩放)、`crop`(裁剪)、`transform`(旋转/翻转)、`background-remover`(纯色抠图)、`sprite-splitter`(精灵图拆分)、`vectorize`(矢量化)、`atlas-packer`(图集打包)、`sequence-to-sheet`(序列帧打包)、`sheet-to-sequence`(序列帧导出)、`nine-slice`(九宫格切分)、`palette-swap`(调色板替换)、`palette-extract`(调色板提取)、`asset-lint`(资源规范检查)、`trim`(透明边裁剪)、`alpha-bleed`(Alpha 边缘外扩)、`png-optimize`(PNG 无损优化/调色板量化)。
+**服务端(sharp / ffmpeg,HTTP API / MCP / CLI 均可用)**——18 个:`compress`(压缩/格式转换)、`resize`(缩放)、`crop`(裁剪)、`transform`(旋转/翻转)、`background-remover`(纯色抠图)、`sprite-splitter`(精灵图拆分)、`vectorize`(矢量化)、`atlas-packer`(图集打包)、`sequence-to-sheet`(序列帧打包)、`sheet-to-sequence`(序列帧导出)、`nine-slice`(九宫格切分)、`palette-swap`(调色板替换)、`palette-extract`(调色板提取)、`asset-lint`(资源规范检查)、`trim`(透明边裁剪)、`alpha-bleed`(Alpha 边缘外扩)、`png-optimize`(PNG 无损优化/调色板量化)、`video-to-frames`(视频转序列帧)。
 
-**浏览器 AI(MCP 专用,通过无头浏览器驱动)**——3 个:`upscale`(Real-ESRGAN 4x 超分)、`background-remover-ai`(ISNet AI 抠图 / ViTMatte 通道抠图)、`inpaint`(MiGAN 去水印/消除物体)。
-即 MCP 共 20 个工具(17 个服务端 + 3 个浏览器 AI);HTTP API 与 CLI 只提供上面 17 个服务端工具,3 个浏览器 AI 工具仅 MCP 可用。
+**浏览器 AI(MCP 专用,通过无头浏览器驱动)**——3 个:`upscale`(Real-ESRGAN 4x 超分)、`background-remover-ai`(ISNet AI 抠图 / 通道阈值抠图)、`inpaint`(MiGAN 去水印/消除物体)。
+即 MCP 共 21 个工具(18 个服务端 + 3 个浏览器 AI);HTTP API 与 CLI 只提供上面 18 个服务端工具,3 个浏览器 AI 工具仅 MCP 可用。
 
 ### HTTP API
 
@@ -228,10 +233,10 @@ bun cli.ts asset-lint --dir ./assets powerOfTwo=true --fail-on-issues   # CI:报
 
 ### AI 工具(MCP)
 
-`upscale` / `background-remover-ai` / `inpaint` 依赖 ONNX Runtime Web + Web Worker,只能跑在浏览器里。MCP server 通过 `playwright-core` 驱动一个无头浏览器,访问本地 web app 完成推理,再把结果 Blob 取回写入输出目录。因此:
+`upscale` / `background-remover-ai` / `inpaint` 依赖 ONNX Runtime Web + Web Worker,只能跑在浏览器里。MCP server 通过 `playwright-core` 驱动一个无头浏览器,访问本地 web app 完成推理,再把结果 Blob 取回写入输出目录。`background-remover-ai` 默认请求 WebGPU 推理(onnxruntime-web),浏览器/驱动不支持或推理报错时自动回退 CPU WASM,且回退后本批剩余图片沿用 CPU;`upscale` / `inpaint` 走 CPU WASM。因此:
 
 - 需要 app 在运行(默认 `http://localhost:3000`);未运行时 MCP 会自动 `bun dev` 拉起(`IMAGE_MASTER_AUTOSTART=false` 可关闭)。
-- 需要本机有 Edge 或 Chrome;首次调用会下载约 27–64MB 模型并缓存在浏览器 profile 中。
+- 需要本机有 Edge 或 Chrome;首次调用会下载模型(Real-ESRGAN ~64MB、ISNet 42/84/168MB 可选、MiGAN ~27MB;WebGPU 路径额外 ~22MB wasm)并缓存在浏览器 profile 中。
 - 若网络无法直连模型源(HuggingFace / imgly CDN),设置 `IMAGE_MASTER_BROWSER_PROXY` 让浏览器走代理。
 
 | 环境变量 | 默认值 | 说明 |
@@ -243,18 +248,19 @@ bun cli.ts asset-lint --dir ./assets powerOfTwo=true --fail-on-issues   # CI:报
 | `IMAGE_MASTER_BROWSER_PROFILE_DIR` | `~/.image-master/browser-profile` | 模型缓存 |
 | `IMAGE_MASTER_BROWSER_HEADLESS` | `true` | 设为 `false` 可看到浏览器 |
 
-`inpaint` 用 `regions`(图片像素坐标的矩形数组)或 `maskPath`(遮罩图片,标记区域 alpha>128)指定要修复的范围。示例:
+`inpaint` 用 `regions`(图片像素坐标的矩形数组)或 `maskPath`(遮罩图片,标记区域 alpha>128)指定要修复的范围。`background-remover-ai` 用 `mode`(`ai` / `channel`)选择 AI 或通道模式,`model` 可选 `isnet` / `isnet_fp16` / `isnet_quint8`,省略时用页面默认(`isnet_quint8`,42MB,速度最快)。示例:
 
 ```jsonc
 { "path": "C:/img/photo.png", "regions": [{ "x": 1355, "y": 1408, "width": 175, "height": 110 }] }
+{ "path": "C:/img/hero.png", "mode": "ai", "model": "isnet_quint8" }
 ```
 
 > 服务端原生实现(把三个模型直接跑在 `onnxruntime-node` 上)仍在计划中,可省掉浏览器与 app 依赖。
 
 ## 🌟 特点
 
-- 🔒 **隐私安全** - 原有 9 个工具的处理均在浏览器本地完成，图片不会上传到服务器；10 个流水线工具由自托管服务端（`sharp`）处理，只经过你自己运行的 app 服务器进程，不会上传到第三方
-- 🚀 **高性能** - 使用 Web Worker 多线程处理，不阻塞主线程
+- 🔒 **隐私安全** - 原有 9 个工具的处理均在浏览器本地完成，图片不会上传到服务器；11 个流水线工具由自托管服务端（`sharp` / ffmpeg）处理，只经过你自己运行的 app 服务器进程，不会上传到第三方
+- 🚀 **高性能** - 使用 Web Worker 多线程处理，不阻塞主线程；AI 抠图默认启用 WebGPU 推理，不可用时自动回退 CPU
 - 📱 **响应式设计** - 适配桌面和移动设备
 - 🎯 **批量处理** - 大部分工具支持同时处理多张图片
 - 💾 **离线可用** - AI 模型下载后缓存在本地，后续使用无需网络

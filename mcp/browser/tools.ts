@@ -3,7 +3,7 @@
  * web UI (ONNX Runtime Web + Web Workers):
  *
  *   - upscale                Real-ESRGAN 4x super resolution
- *   - background-remover-ai  ISNet (@imgly) / ViTMatte channel matting
+ *   - background-remover-ai  ISNet (@imgly) / channel-threshold matting
  *   - inpaint                MiGAN inpainting from rectangles or a mask image
  *
  * Every tool drives the real page and pulls the resulting Blob straight out of
