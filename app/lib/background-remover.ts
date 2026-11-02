@@ -24,6 +24,7 @@ export interface ChannelMattingOptions {
 
 export interface AIRemoveBackgroundOptions {
   model: AIModel;
+  device?: "cpu" | "gpu";
   refineEdges?: boolean;
   edgeShrink?: number; // 0-20 pixels
   onProgress?: (phase: string, progress: number) => void;
@@ -718,12 +719,13 @@ export async function aiRemoveBackground(
     "@imgly/background-removal"
   );
 
-  const { model, edgeShrink = 0, refineEdges = false, onProgress } = options;
+  const { model, device = "cpu", edgeShrink = 0, refineEdges = false, onProgress } = options;
 
   onProgress?.("init", 0);
 
   const blob = await imglyRemoveBackground(file, {
     model,
+    device,
     progress: (key: string, current: number, total: number) => {
       const ratio = (total > 0 ? current / total : 0) * (refineEdges ? 0.6 : 1);
       if (key.includes("fetch:")) {

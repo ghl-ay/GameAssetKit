@@ -71,7 +71,7 @@ export function BackgroundRemover({
   const [mode, setMode] = useState<"color" | "ai" | "channel">("color");
 
   // AI options
-  const [aiModel, setAiModel] = useState<AIModel>("isnet");
+  const [aiModel, setAiModel] = useState<AIModel>("isnet_quint8");
   const [refineEdges, setRefineEdges] = useState(false);
   const [aiPhase, setAiPhase] = useState("");
 
@@ -140,6 +140,19 @@ export function BackgroundRemover({
     setSeedPoints([]);
   }, []);
 
+  // @imgly/background-removal caches its session by JSON.stringify(config),
+  // which drops functions — every image reuses the first call's progress
+  // callback. The callback must read the loop position from refs instead of
+  // closing over `i`, or all images report progress inside the first slice.
+  const aiProgressRef = useRef({ index: 0, total: 0 });
+  const handleAiProgress = useCallback((phase: string, ratio: number) => {
+    setAiPhase(phase);
+    const { index, total } = aiProgressRef.current;
+    if (total > 0) {
+      setProgress(((index + ratio) / total) * 100);
+    }
+  }, []);
+
   const handleProcess = useCallback(async () => {
     if (files.length === 0) return;
 
@@ -150,22 +163,34 @@ export function BackgroundRemover({
     setAiPhase("");
     const processed: RemoveResult[] = [];
 
+    // WebGPU first; a hard failure on any image downgrades the rest of the
+    // batch to CPU. imgly only falls back on its own when WebGPU is absent,
+    // not when session creation or inference throws.
+    let aiDevice: "cpu" | "gpu" = "gpu";
+    const runAi = (file: File, device: "cpu" | "gpu") =>
+      aiRemoveBackground(file, {
+        model: aiModel,
+        device,
+        refineEdges,
+        edgeShrink,
+        onProgress: handleAiProgress,
+      });
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      aiProgressRef.current = { index: i, total: files.length };
       try {
         let result: RemoveResult;
         if (mode === "ai") {
-          result = await aiRemoveBackground(file, {
-            model: aiModel,
-            refineEdges,
-            edgeShrink,
-            onProgress: (phase, ratio) => {
-              setAiPhase(phase);
-              const fileBase = i / files.length;
-              const fileShare = 1 / files.length;
-              setProgress((fileBase + fileShare * ratio) * 100);
-            },
-          });
+          try {
+            result = await runAi(file, aiDevice);
+          } catch (error) {
+            if (aiDevice !== "gpu") throw error;
+            console.warn("AI inference failed on WebGPU; falling back to CPU", error);
+            aiDevice = "cpu";
+            aiProgressRef.current = { index: i, total: files.length };
+            result = await runAi(file, "cpu");
+          }
         } else if (mode === "channel") {
           result = await channelMatting(file, {
             channel: channelSource,
@@ -193,9 +218,7 @@ export function BackgroundRemover({
         lastError = error;
         console.error(`Failed to process ${file.name}:`, error);
       }
-      if (mode !== "ai") {
-        setProgress(((i + 1) / files.length) * 100);
-      }
+      setProgress(((i + 1) / files.length) * 100);
     }
 
     setResults(processed);
@@ -234,6 +257,7 @@ export function BackgroundRemover({
     channelMin,
     channelMax,
     channelInvert,
+    handleAiProgress,
   ]);
 
   const handleDownload = useCallback(async () => {
@@ -519,9 +543,9 @@ export function BackgroundRemover({
                   <label className="text-sm text-zinc-400">AI 模型</label>
                   <div className="grid grid-cols-3 gap-2">
                     {([
-                      { value: "isnet" as AIModel, label: "标准", desc: "平衡精度与速度" },
-                      { value: "isnet_fp16" as AIModel, label: "高性能", desc: "更快速，需较好设备" },
-                      { value: "isnet_quint8" as AIModel, label: "轻量", desc: "适合低配设备" },
+                      { value: "isnet" as AIModel, label: "标准", desc: "精度最高，速度较慢" },
+                      { value: "isnet_fp16" as AIModel, label: "高性能", desc: "速度与精度均衡" },
+                      { value: "isnet_quint8" as AIModel, label: "轻量", desc: "速度最快，默认推荐" },
                     ]).map((opt) => (
                       <button
                         key={opt.value}
