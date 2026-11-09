@@ -6,6 +6,8 @@
 - **自托管**：图片只经过你本机运行的进程，不上传第三方
 - **两种执行方式**：9 个工具纯浏览器本地处理；11 个游戏资源流水线工具走本地 `sharp` / `ffmpeg`
 
+> **来源与致谢**：本项目基于 [moonrailgun/image-master](https://github.com/moonrailgun/image-master) 二次开发，遵循 MIT License。原项目版权归原作者 moonrailgun 所有，详细版权声明见 [LICENSE](./LICENSE)。
+
 ---
 
 ## 🤖 For AI Agents（从这里开始）
@@ -442,7 +444,16 @@ bun start
 
 ---
 
+## 🙏 致谢
+
+- 原始项目：[moonrailgun/image-master](https://github.com/moonrailgun/image-master) —— 本项目的浏览器图片工具、整体架构与设计来自原作者 moonrailgun，感谢其以 MIT License 开源。
+- 开源依赖：Next.js、React、sharp、ffmpeg-static、ONNX Runtime Web、@imgly/background-removal、JSZip 等。
+
 ## 📄 License
 
 MIT
+
+本项目基于 [moonrailgun/image-master](https://github.com/moonrailgun/image-master) 二次开发，原项目版权归 moonrailgun 所有。完整许可与版权声明见 [LICENSE](./LICENSE)。
+
+
 

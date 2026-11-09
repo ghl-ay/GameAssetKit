@@ -35,7 +35,12 @@ export const metadata: Metadata = {
     "AI图片处理",
     "免费图片工具",
   ],
-  authors: [{ name: "moonrailgun" }],
+  authors: [
+    {
+      name: "moonrailgun",
+      url: "https://github.com/moonrailgun/image-master",
+    },
+  ],
   creator: "moonrailgun",
   openGraph: {
     type: "website",
@@ -91,3 +96,5 @@ export default function RootLayout({
     </html>
   );
 }
+
+

@@ -153,8 +153,21 @@ export default function Home() {
           <p className="text-center text-sm text-zinc-600">
             基础图像处理在浏览器本地完成；流水线工具由自托管服务处理，不经过第三方
           </p>
+          <p className="mt-2 text-center text-sm text-zinc-600">
+            本项目基于{" "}
+            <a
+              href="https://github.com/moonrailgun/image-master"
+              target="_blank"
+              rel="noreferrer"
+              className="text-zinc-400 underline underline-offset-2 transition-colors hover:text-zinc-200"
+            >
+              moonrailgun/image-master
+            </a>{" "}
+            二次开发，感谢原作者开源
+          </p>
         </div>
       </footer>
     </div>
   );
 }
+
