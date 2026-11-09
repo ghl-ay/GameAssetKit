@@ -1,6 +1,172 @@
 # Image Master
 
-一个图片处理工具：原有 9 个工具全部在浏览器本地完成，**不会上传到服务器**；新增的 11 个游戏资源流水线工具由自托管服务端（`sharp`）处理——图片只经过你自己运行的 app 服务器进程，不会上传到第三方。
+浏览器 + 自托管服务端的图片处理工具集：**20 个 Web 工具**、**21 个 MCP 工具**、**18 个 HTTP API / CLI 工具**，共用同一套 `core/` 实现。
+
+- **零密钥**：不需要任何 API Key 或云服务
+- **自托管**：图片只经过你本机运行的进程，不上传第三方
+- **两种执行方式**：9 个工具纯浏览器本地处理；11 个游戏资源流水线工具走本地 `sharp` / `ffmpeg`
+
+---
+
+## 🤖 For AI Agents（从这里开始）
+
+> **给 AI 的指令**：只读本节即可完成安装、验证和启动；除非需要工具参数细节，无需阅读其余章节。
+
+### 0. 项目摘要（机器可读）
+
+```json
+{
+  "name": "image-master",
+  "stack": ["TypeScript", "Next.js 16", "React 19", "Bun"],
+  "packageManager": "bun",
+  "runtime": { "bun": ">=1.2", "node": ">=20.9" },
+  "defaultPort": 3000,
+  "requiresSecrets": false,
+  "requiresDocker": false,
+  "requiresDatabase": false,
+  "install": ["bun install"],
+  "verify": ["bun cli.ts help", "bun test", "bun run build"],
+  "start": "bun dev",
+  "healthcheck": "GET http://localhost:3000/api/tools"
+}
+```
+
+### 1. 环境检查
+
+```bash
+bun --version    # 要求 >= 1.2（实测 1.4.2）
+node --version   # 要求 >= 20.9
+```
+
+缺少 Bun 时安装：
+
+```bash
+# Windows PowerShell
+powershell -c "irm bun.sh/install.ps1 | iex"
+
+# macOS / Linux
+curl -fsSL https://bun.sh/install | bash
+```
+
+### 2. 安装
+
+```bash
+git clone https://gitee.com/ghl666/material-tools.git
+cd material-tools
+bun install
+```
+
+首次安装会下载 `ffmpeg-static` 的二进制（约 80MB），耗时可能超过 2 分钟。
+
+网络受限时先启动代理，再重试（只对当前命令生效，不修改全局配置）：
+
+```powershell
+# Windows PowerShell
+$env:HTTPS_PROXY="http://127.0.0.1:7877"; $env:HTTP_PROXY="http://127.0.0.1:7877"; bun install
+```
+
+```bash
+# macOS / Linux
+HTTPS_PROXY=http://127.0.0.1:7877 HTTP_PROXY=http://127.0.0.1:7877 bun install
+```
+
+### 3. 验证（全部必须通过）
+
+| 命令 | 期望结果 |
+|---|---|
+| `bun cli.ts help` | 列出 **18** 个服务端工具，退出码 `0` |
+| `bun test` | 退出码 `0`（当前 159 pass / 0 fail） |
+| `bun run build` | 输出 Next.js 路由表，退出码 `0` |
+| `GET http://localhost:3000/api/tools` | JSON 包含 `tools` 数组 |
+
+一次性执行：
+
+```bash
+# macOS / Linux
+bun cli.ts help >/dev/null && bun test && bun run build
+```
+
+```powershell
+# Windows PowerShell
+bun cli.ts help | Out-Null; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; bun test; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; bun run build
+```
+
+### 4. 启动与健康检查
+
+```bash
+bun dev
+```
+
+看到 `Ready` 后，在另一个终端执行（AI/CI 无人值守时请用后台进程，结束时记得关闭）：
+
+```bash
+curl http://localhost:3000/api/tools
+curl http://localhost:3000/api/tools/compress
+```
+
+```powershell
+# Windows PowerShell
+Invoke-WebRequest http://localhost:3000/api/tools | Select-Object -ExpandProperty Content
+```
+
+`/api/tools` 返回工具清单，`/api/tools/{tool}` 返回该工具的 JSON Schema 参数说明。
+
+### 5. 选择调用入口
+
+| 场景 | 入口 | 用法 |
+|---|---|---|
+| 一次性批处理 | **CLI** | `bun cli.ts <tool> <input...> key=value ...` |
+| 脚本 / 跨语言调用 | **HTTP API** | `POST /api/tools/{tool}` |
+| AI Agent 工具调用 | **MCP** | `bun mcp/server.ts`（stdio） |
+| 人工操作 | **Web UI** | `http://localhost:3000` |
+
+### 6. 完成标准
+
+- [ ] `bun install` 退出码 `0`
+- [ ] `bun cli.ts help` 列出 18 个工具
+- [ ] `bun test` 全部通过
+- [ ] `bun run build` 成功
+- [ ] `GET /api/tools` 返回 `200` + JSON
+
+### 7. 失败处理
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `bun: command not found` | 未安装 Bun | 执行第 1 节安装命令 |
+| `Cannot find package 'ffmpeg-static'` | 依赖未完整安装 | 重新执行 `bun install` |
+| `install script from "ffmpeg-static" exited with 1` 或 `Request timed out` | 下载 ffmpeg 超时 | 设置代理后执行 `node node_modules/ffmpeg-static/install.js` |
+| `sharp` 加载失败 | 平台二进制不匹配 | 删除 `node_modules` 后重新 `bun install` |
+| 端口 3000 被占用 | 其他进程占用 | 用 `bunx next dev -p 3001`，并设置 `IMAGE_MASTER_BASE_URL=http://localhost:3001` |
+| AI 模型下载失败 | 无法访问 HuggingFace / imgly CDN | 设置 `IMAGE_MASTER_BROWSER_PROXY` |
+| WebGPU 不可用 | 浏览器或驱动不支持 | 自动回退 CPU WASM，无需处理 |
+
+### 8. AI 操作约束
+
+- 必须使用 **Bun**；不要用 `npm` / `pnpm` / `yarn`（`trustedDependencies` 等配置只对 Bun 生效）。
+- 不要读取或索引 `node_modules/`、`.next/`、`output/`，会浪费上下文。
+- `output/` 已加入 `.gitignore`，不要提交处理结果。
+- 3 个浏览器 AI 工具（`upscale`、`background-remover-ai`、`inpaint`）只通过 MCP 提供，需要本机 Edge 或 Chrome。
+- 首次调用 AI 工具会下载模型（27–168MB），属于正常行为。
+
+---
+
+## 🚀 快速开始（人类）
+
+```bash
+bun install
+bun dev
+```
+
+打开 [http://localhost:3000](http://localhost:3000)。
+
+生产构建：
+
+```bash
+bun run build
+bun start
+```
+
+---
 
 ## ✨ 功能特性
 
@@ -60,39 +226,23 @@
 
 ### 🎮 游戏资源流水线
 
-后 11 个工具是给游戏资源批处理准备的,和已有的 `sprite-splitter`(拆图)组成完整闭环:
+后 11 个工具是给游戏资源批处理准备的，和已有的 `sprite-splitter`（拆图）组成完整闭环：
 
 | 工具 | 作用 |
 |---|---|
 | `atlas-packer` | **多图**打包成一张图集(PNG/WebP)+ TexturePacker JSON Hash 元数据。MaxRects 装箱、`padding` 间距、`extrude` 把精灵边缘颜色外扩进留白、`trim` 先裁掉透明边、`powerOfTwo` 补成 2 的幂、`maxWidth`/`maxHeight` 限制尺寸 |
-| `trim` | 裁掉四周透明边,可加透明留白(`padding`)、补正方形(`square`)、补 2 的幂(`powerOfTwo`),`anchor` 指定内容落在画布的哪个位置 |
-| `alpha-bleed` | 把透明像素的 RGB 换成最近的可见像素颜色(边缘外扩),`alpha` 不变 —— 消除缩放、mipmap、图集采样时的黑边/灰边;`unpremultiply` 还原黑底预乘的半透明边缘 |
-| `video-to-frames` | 用内置 ffmpeg 把视频(mp4/webm/mov/gif 等)抽成序列帧:`fps` 省略时逐帧提取,`start`/`end` 按秒截取,`width`/`scale` 等比缩放,`format` 可选 png/webp/jpeg,`maxFrames` 限制帧数(默认 300);带透明通道的 WebM(VP9)可产出带 alpha 的帧。输出帧图片 + 元数据 JSON |
-| `sequence-to-sheet` | **多图**把序列帧排成等距网格的 spritesheet:每帧先取可见内容,再按 `anchor` 对齐到统一单元格(角色动画用 `bottom`/`bottom-center` 消除脚底漂移),`columns`/`padding`/`extrude`/`fps`/`powerOfTwo` |
-| `sheet-to-sequence` | 反方向:按网格(`padding` 感知)把 spritesheet 切成从 `0001` 开始补零的单帧 PNG,可 `trim` 每帧透明边;`cellWidth`/`cellHeight` 用于补过 2 的幂的图集 |
-| `nine-slice` | 九宫格(9-slice / nine-patch)UI 资源:输出 `borders`、`minimumSize` 与九个区域坐标的 JSON,并导出各区域切片 PNG(`slices=false` 时只输出 JSON 描述,适合批量分析)。边框可显式指定,也可自动识别(以中心像素为内部色,沿中间行/列扩展,装饰环与圆角都会算进边框) |
-| `palette-extract` | 统计图片实际使用的颜色(忽略全透明像素),输出带占比的调色板 JSON + 色板示意图;超过上限时 `quantize=true` 用 libimagequant 量化取色(默认),`false` 则按频率取前 N 种 |
-| `palette-swap` | 换肤/队伍色:按 `map` 显式 from→to 替换,或给 `palette` 由 `order`(luminance/frequency/first)排序后整份替换;`tolerance` 容忍接近色,输出替换后的 PNG + 记录命中数的 JSON |
-| `asset-lint` | 批量体检:**多图**检查 2 的幂(`powerOfTwo`)、整除对齐(`multipleOf`)、最大边长(`maxSize`)、格式白名单(`formats`)、透明通道(`alpha`)、单文件体积(`maxKilobytes`)、文件名正则(`namePattern`),并顺带查出扩展名与实际格式不符、全透明空图、内容重复的文件。返回带 `ok` / 汇总 / 每个文件问题清单的 JSON 报告 |
-| `png-optimize` | `mode=lossless` 用最高 zlib 力度无损重压;`mode=palette` 量化到 2-256 色(像素风资源常用) |
+| `trim` | 裁掉四周透明边，可加透明留白(`padding`)、补正方形(`square`)、补 2 的幂(`powerOfTwo`)，`anchor` 指定内容落在画布的哪个位置 |
+| `alpha-bleed` | 把透明像素的 RGB 换成最近的可见像素颜色(边缘外扩)，`alpha` 不变 —— 消除缩放、mipmap、图集采样时的黑边/灰边；`unpremultiply` 还原黑底预乘的半透明边缘 |
+| `video-to-frames` | 用内置 ffmpeg 把视频(mp4/webm/mov/gif 等)抽成序列帧：`fps` 省略时逐帧提取，`start`/`end` 按秒截取，`width`/`scale` 等比缩放，`format` 可选 png/webp/jpeg，`maxFrames` 限制帧数(默认 300)；带透明通道的 WebM(VP9)可产出带 alpha 的帧。输出帧图片 + 元数据 JSON |
+| `sequence-to-sheet` | **多图**把序列帧排成等距网格的 spritesheet：每帧先取可见内容，再按 `anchor` 对齐到统一单元格(角色动画用 `bottom`/`bottom-center` 消除脚底漂移)，`columns`/`padding`/`extrude`/`fps`/`powerOfTwo` |
+| `sheet-to-sequence` | 反方向：按网格(`padding` 感知)把 spritesheet 切成从 `0001` 开始补零的单帧 PNG，可 `trim` 每帧透明边；`cellWidth`/`cellHeight` 用于补过 2 的幂的图集 |
+| `nine-slice` | 九宫格(9-slice / nine-patch)UI 资源：输出 `borders`、`minimumSize` 与九个区域坐标的 JSON，并导出各区域切片 PNG(`slices=false` 时只输出 JSON 描述，适合批量分析)。边框可显式指定，也可自动识别(以中心像素为内部色，沿中间行/列扩展，装饰环与圆角都会算进边框) |
+| `palette-extract` | 统计图片实际使用的颜色(忽略全透明像素)，输出带占比的调色板 JSON + 色板示意图；超过上限时 `quantize=true` 用 libimagequant 量化取色(默认)，`false` 则按频率取前 N 种 |
+| `palette-swap` | 换肤/队伍色：按 `map` 显式 from→to 替换，或给 `palette` 由 `order`(luminance/frequency/first)排序后整份替换；`tolerance` 容忍接近色，输出替换后的 PNG + 记录命中数的 JSON |
+| `asset-lint` | 批量体检：**多图**检查 2 的幂(`powerOfTwo`)、整除对齐(`multipleOf`)、最大边长(`maxSize`)、格式白名单(`formats`)、透明通道(`alpha`)、单文件体积(`maxKilobytes`)、文件名正则(`namePattern`)，并顺带查出扩展名与实际格式不符、全透明空图、内容重复的文件。返回带 `ok` / 汇总 / 每个文件问题清单的 JSON 报告 |
+| `png-optimize` | `mode=lossless` 用最高 zlib 力度无损重压；`mode=palette` 量化到 2-256 色(像素风资源常用) |
 
-典型链路:`sprite-splitter` / `sheet-to-sequence` → `trim` → `alpha-bleed` → `sequence-to-sheet`(序列帧)或 `atlas-packer`(静态图集) → `png-optimize` → `asset-lint`(提交前体检);视频素材走 `video-to-frames` →(可选 AI 抠图)→ `sequence-to-sheet` / `atlas-packer`;UI 面板走 `nine-slice` 拿到九宫格参数;换肤变体走 `palette-extract`(取色)→ `palette-swap`(批量替换)。
-
-```bash
-bun cli.ts atlas-packer hero.png foe.png coin.png name=ui padding=4 trim=true powerOfTwo=true
-bun cli.ts trim hero.png padding=6 powerOfTwo=true anchor=bottom-right
-bun cli.ts alpha-bleed hero.png radius=6
-bun cli.ts png-optimize hero.png mode=palette colors=16
-bun cli.ts sequence-to-sheet walk_*.png name=walk columns=3 anchor=bottom fps=12
-bun cli.ts sheet-to-sequence walk.png columns=3 count=6 trim=true --out ./frames
-bun cli.ts video-to-frames walk.mp4 fps=12 width=512 --out ./frames
-bun cli.ts nine-slice panel.png                      # 自动识别边框,导出 9 张切片 + JSON
-bun cli.ts nine-slice panel.png left=8 right=8 top=6 bottom=6
-bun cli.ts palette-extract orb.png                 # 调色板 JSON + 色板图
-bun cli.ts palette-swap orb.png 'palette=["#101a2b","#2f5a9a","#4d8fd6","#d9ecff"]' order=luminance
-bun cli.ts palette-swap orb.png 'map=[{"from":"#d1567a","to":"#3fae6a"}]'
-bun cli.ts asset-lint --dir ./assets powerOfTwo=true maxSize=2048
-```
+典型链路：`sprite-splitter` / `sheet-to-sequence` → `trim` → `alpha-bleed` → `sequence-to-sheet`（序列帧）或 `atlas-packer`（静态图集） → `png-optimize` → `asset-lint`（提交前体检）；视频素材走 `video-to-frames` →（可选 AI 抠图）→ `sequence-to-sheet` / `atlas-packer`；UI 面板走 `nine-slice` 拿到九宫格参数；换肤变体走 `palette-extract`（取色）→ `palette-swap`（批量替换）。
 
 ### 🔗 工具联动
 
@@ -100,72 +250,78 @@ bun cli.ts asset-lint --dir ./assets powerOfTwo=true maxSize=2048
 - 处理结果可一键发送到其他工具继续处理
 - 支持拖拽上传和剪贴板粘贴上传
 
+---
+
+## 🧰 工具一览
+
+| 工具 | 输入 | 输出 | 入口 |
+|---|---|---|---|
+| `compress` | 图片 + `format` / `quality` | 图片 | API / CLI / MCP |
+| `resize` | 图片 + `width` / `height` / `fit` | 图片 | API / CLI / MCP |
+| `crop` | 图片 + `left` / `top` / `width` / `height` | 图片 | API / CLI / MCP |
+| `transform` | 图片 + `rotate` / `flipH` / `flipV` | 图片 | API / CLI / MCP |
+| `background-remover` | 图片 + `color` / `tolerance` | PNG | API / CLI / MCP |
+| `sprite-splitter` | 精灵图 | ZIP / 多张 PNG | API / CLI / MCP |
+| `vectorize` | 图片 | SVG | API / CLI / MCP |
+| `atlas-packer` | 多张图片 | PNG/WebP + JSON（ZIP） | API / CLI / MCP |
+| `trim` | 图片 + `padding` / `anchor` | PNG | API / CLI / MCP |
+| `alpha-bleed` | 图片 + `radius` | PNG | API / CLI / MCP |
+| `png-optimize` | 图片 + `mode` / `colors` | PNG | API / CLI / MCP |
+| `sequence-to-sheet` | 多张序列帧 | PNG + JSON（ZIP） | API / CLI / MCP |
+| `sheet-to-sequence` | spritesheet | 多张 PNG（ZIP） | API / CLI / MCP |
+| `video-to-frames` | 视频 + `fps` / `width` / `format` | 多张帧 + JSON（ZIP） | API / CLI / MCP |
+| `nine-slice` | UI 面板图 | JSON + 9 张切片 | API / CLI / MCP |
+| `palette-swap` | 图片 + `map` / `palette` | PNG + JSON | API / CLI / MCP |
+| `palette-extract` | 图片 + `maxColors` | JSON + 色板 PNG | API / CLI / MCP |
+| `asset-lint` | 多张图片 | JSON 报告 | API / CLI / MCP |
+| `upscale` | 图片 + `scale` | 放大图片 | **仅 MCP** |
+| `background-remover-ai` | 图片 + `mode` / `model` | PNG | **仅 MCP** |
+| `inpaint` | 图片 + `regions` / `maskPath` | PNG | **仅 MCP** |
+
+完整的参数 schema 用 `bun cli.ts help` 或 `GET /api/tools/{tool}` 查询。
+
+### 常见任务速查
+
+```bash
+# 压缩为 WebP
+bun cli.ts compress a.png format=webp quality=70
+
+# 批量裁掉透明边并补 2 的幂
+bun cli.ts trim a.png padding=4 powerOfTwo=true anchor=bottom
+
+# 打包图集
+bun cli.ts atlas-packer a.png b.png c.png name=ui padding=4 trim=true
+
+# 视频抽帧
+bun cli.ts video-to-frames walk.mp4 fps=12 width=512 --out ./frames
+
+# 序列帧合成 spritesheet
+bun cli.ts sequence-to-sheet walk_*.png name=walk columns=3 anchor=bottom fps=12
+
+# 九宫格分析
+bun cli.ts nine-slice panel.png
+
+# 批量资源体检（CI 失败时退出码 1）
+bun cli.ts asset-lint --dir ./assets powerOfTwo=true maxSize=2048 --fail-on-issues
+```
+
+---
+
 ## 🛠️ 技术栈
 
 - [Next.js 16](https://nextjs.org) - React 全栈框架
 - [React 19](https://react.dev) - UI 库
 - [Tailwind CSS 4](https://tailwindcss.com) - 样式框架
 - [ONNX Runtime Web](https://onnxruntime.ai) - 浏览器端 AI 推理
-- [browser-image-compression](https://github.com/nicholasKlick/browser-image-compression) - 图片压缩库
+- [sharp](https://sharp.pixelplumbing.com) - 服务端图像处理
+- [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static) - 内置视频抽帧
 - [JSZip](https://stuk.github.io/jszip/) - ZIP 文件生成
-- [file-saver](https://github.com/nicholasKlick/file-saver) - 文件下载
 
-## 🚀 快速开始
+---
 
-```bash
-# 安装依赖
-bun install
+## 🔌 机器入口
 
-# 启动开发服务器
-bun dev
-```
-
-打开 [http://localhost:3000](http://localhost:3000) 即可使用。
-
-### 🖥️ Web UI
-
-站点共 20 个工具页面:原有 9 个工具仍完全在浏览器里跑(不经过服务端);新增的 11 个游戏资源流水线工具是服务端操作(主要为 `sharp`,视频抽帧走内置 ffmpeg),页面如下:
-
-- `/video-to-frames` — 视频转序列帧
-- `/atlas-packer` — 图集打包
-- `/sequence-to-sheet` — 序列帧打包
-- `/sheet-to-sequence` — 序列帧导出
-- `/nine-slice` — 九宫格切分
-- `/palette-swap` — 调色板替换
-- `/palette-extract` — 调色板提取
-- `/asset-lint` — 资源规范检查
-- `/trim` — 透明边裁剪
-- `/alpha-bleed` — Alpha 边缘外扩
-- `/png-optimize` — PNG 优化
-
-这些流水线页面统一调用本项目自己的 `POST /api/tools/{tool}`;大部分共用面板组件 `app/components/ApiToolPanel.tsx`(选项 schema 定义在 `app/lib/api-tools.ts`),视频转序列帧使用自己的页面组件(`app/(tools)/video-to-frames/client.tsx`)。因此它们需要 app 本身在运行(页面和接口都由它提供);原有 9 个工具不经过服务端,浏览器里即可完成。
-
-## 📦 构建部署
-
-```bash
-# 构建生产版本
-bun run build
-
-# 启动生产服务器
-bun start
-```
-
-## 🤖 AI / 程序化调用
-
-除了浏览器 UI,项目提供三个共用同一核心层(`core/`)的机器入口,可被 AI Agent、脚本或其他程序直接调用:
-
-| 入口 | 用途 |
-|---|---|
-| **HTTP API** | `POST /api/tools/{tool}`,适合远程/跨语言调用 |
-| **MCP Server** | stdio 方式挂载到支持 MCP 的 AI 客户端(ZCode、Claude、Cursor 等) |
-| **CLI** | 本地命令行批处理 |
-
-支持的工具有 21 个:
-
-**服务端(sharp / ffmpeg,HTTP API / MCP / CLI 均可用)**——18 个:`compress`(压缩/格式转换)、`resize`(缩放)、`crop`(裁剪)、`transform`(旋转/翻转)、`background-remover`(纯色抠图)、`sprite-splitter`(精灵图拆分)、`vectorize`(矢量化)、`atlas-packer`(图集打包)、`sequence-to-sheet`(序列帧打包)、`sheet-to-sequence`(序列帧导出)、`nine-slice`(九宫格切分)、`palette-swap`(调色板替换)、`palette-extract`(调色板提取)、`asset-lint`(资源规范检查)、`trim`(透明边裁剪)、`alpha-bleed`(Alpha 边缘外扩)、`png-optimize`(PNG 无损优化/调色板量化)、`video-to-frames`(视频转序列帧)。
-
-**浏览器 AI(MCP 专用,通过无头浏览器驱动)**——3 个:`upscale`(Real-ESRGAN 4x 超分)、`background-remover-ai`(ISNet AI 抠图 / 通道阈值抠图)、`inpaint`(MiGAN 去水印/消除物体)。
-即 MCP 共 21 个工具(18 个服务端 + 3 个浏览器 AI);HTTP API 与 CLI 只提供上面 18 个服务端工具,3 个浏览器 AI 工具仅 MCP 可用。
+三个入口共用 `core/` 实现，能力一致（浏览器 AI 工具除外）。
 
 ### HTTP API
 
@@ -184,9 +340,7 @@ curl -X POST -H "Content-Type: application/json" \
   http://localhost:3000/api/tools/background-remover -o out.png
 ```
 
-多文件结果(如精灵图拆分、图集打包)返回 `.zip`。`GET /api/tools/{tool}` 可查询单个工具的参数说明。
-
-多图工具(如 `atlas-packer`)重复给 `file` 字段,或用 JSON 的 `images_base64` 数组:
+多文件结果（如精灵图拆分、图集打包）返回 `.zip`。多图工具重复给 `file` 字段，或用 JSON 的 `images_base64` 数组：
 
 ```bash
 curl -X POST -F "file=@hero.png" -F "file=@coin.png" \
@@ -205,17 +359,19 @@ curl -X POST -H "Content-Type: application/json" \
   "mcpServers": {
     "image-master": {
       "command": "bun",
-      "args": ["/path/to/image-master/mcp/server.ts"],
+      "args": ["F:/path/to/image-master/mcp/server.ts"],
       "env": {
-        "IMAGE_MASTER_OUTPUT_DIR": "/tmp/im-output",
-        "IMAGE_MASTER_BROWSER_PROXY": "http://127.0.0.1:10808"
+        "IMAGE_MASTER_OUTPUT_DIR": "F:/path/to/image-master/output",
+        "IMAGE_MASTER_BROWSER_PROXY": "http://127.0.0.1:7877"
       }
     }
   }
 }
 ```
 
-每个工具接受本地图片路径参数 `path` 及各工具选项,处理结果写入输出目录并返回文件路径。多图工具(如 `atlas-packer`)用 `paths` 传路径数组。
+> 把 `F:/path/to/image-master` 替换为仓库绝对路径（Windows 用正斜杠可避免 JSON 转义）。
+
+每个工具接受本地图片路径 `path` 及各工具选项，结果写入输出目录并返回文件路径；多图工具用 `paths` 传路径数组。
 
 ### CLI
 
@@ -223,50 +379,70 @@ curl -X POST -H "Content-Type: application/json" \
 bun cli.ts compress a.png format=webp quality=70
 bun cli.ts resize a.png width=200 fit=cover
 bun cli.ts sprite-splitter sheet.png mode=grid columns=4 rows=2
-bun cli.ts atlas-packer a.png b.png c.png name=ui padding=4   # 多图工具直接给多个路径
-bun cli.ts asset-lint --dir ./assets powerOfTwo=true --fail-on-issues   # CI:报告 ok=false 时退出码 1
+bun cli.ts atlas-packer a.png b.png c.png name=ui padding=4
+bun cli.ts asset-lint --dir ./assets powerOfTwo=true --fail-on-issues
 ```
 
-输出默认写入 `./output/`,可用 `--out` 指定;`--dir <folder>` 把文件夹内的图片批量作为输入(无需逐个列路径)。运行 `bun cli.ts` 查看全部工具与参数。
+- 输出默认写入 `./output/`，可用 `--out <dir>` 指定
+- `--dir <folder>` 把文件夹内的图片批量作为输入（仅当前层，不递归）
+- `bun cli.ts help` 查看全部工具与参数
+- `--fail-on-issues`：JSON 报告 `ok === false` 时退出码 `1`（目前仅 `asset-lint` 会产出）；环境变量 `IMAGE_MASTER_FAIL_ON_ISSUES=1` 等价
 
-`--fail-on-issues` 用于 CI:写出的 JSON 报告里 `ok === false` 时以退出码 1 结束(目前只有 `asset-lint` 会产出这种报告);环境变量 `IMAGE_MASTER_FAIL_ON_ISSUES=1` 等价。不加这个开关时退出码保持 0,已有脚本不受影响。
-
-### AI 工具(MCP)
-
-`upscale` / `background-remover-ai` / `inpaint` 依赖 ONNX Runtime Web + Web Worker,只能跑在浏览器里。MCP server 通过 `playwright-core` 驱动一个无头浏览器,访问本地 web app 完成推理,再把结果 Blob 取回写入输出目录。`background-remover-ai` 默认请求 WebGPU 推理(onnxruntime-web),浏览器/驱动不支持或推理报错时自动回退 CPU WASM,且回退后本批剩余图片沿用 CPU;`upscale` / `inpaint` 走 CPU WASM。因此:
-
-- 需要 app 在运行(默认 `http://localhost:3000`);未运行时 MCP 会自动 `bun dev` 拉起(`IMAGE_MASTER_AUTOSTART=false` 可关闭)。
-- 需要本机有 Edge 或 Chrome;首次调用会下载模型(Real-ESRGAN ~64MB、ISNet 42/84/168MB 可选、MiGAN ~27MB;WebGPU 路径额外 ~22MB wasm)并缓存在浏览器 profile 中。
-- 若网络无法直连模型源(HuggingFace / imgly CDN),设置 `IMAGE_MASTER_BROWSER_PROXY` 让浏览器走代理。
+### 环境变量
 
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
-| `IMAGE_MASTER_BASE_URL` | `http://localhost:3000` | web app 地址 |
-| `IMAGE_MASTER_AUTOSTART` | `true` | 未就绪时自动 `bun dev` |
+| `IMAGE_MASTER_OUTPUT_DIR` | `<repo>/output` | MCP / CLI 输出目录 |
+| `IMAGE_MASTER_BASE_URL` | `http://localhost:3000` | Web app 地址 |
+| `IMAGE_MASTER_AUTOSTART` | `true` | AI 工具未就绪时自动 `bun dev` |
 | `IMAGE_MASTER_BROWSER_CHANNEL` | `msedge` | `msedge` / `chrome` |
-| `IMAGE_MASTER_BROWSER_PROXY` | — | 例:`http://127.0.0.1:10808` |
-| `IMAGE_MASTER_BROWSER_PROFILE_DIR` | `~/.image-master/browser-profile` | 模型缓存 |
+| `IMAGE_MASTER_BROWSER_PROXY` | — | 例：`http://127.0.0.1:7877` |
+| `IMAGE_MASTER_BROWSER_PROFILE_DIR` | `~/.image-master/browser-profile` | 模型缓存目录 |
 | `IMAGE_MASTER_BROWSER_HEADLESS` | `true` | 设为 `false` 可看到浏览器 |
+| `IMAGE_MASTER_FAIL_ON_ISSUES` | — | 设为 `1` 等价 `--fail-on-issues` |
 
-`inpaint` 用 `regions`(图片像素坐标的矩形数组)或 `maskPath`(遮罩图片,标记区域 alpha>128)指定要修复的范围。`background-remover-ai` 用 `mode`(`ai` / `channel`)选择 AI 或通道模式,`model` 可选 `isnet` / `isnet_fp16` / `isnet_quint8`,省略时用页面默认(`isnet_quint8`,42MB,速度最快)。示例:
+### AI 工具（仅 MCP）
+
+`upscale` / `background-remover-ai` / `inpaint` 依赖 ONNX Runtime Web + Web Worker，只能跑在浏览器里。MCP server 通过 `playwright-core` 驱动无头浏览器，访问本地 web app 完成推理，再把结果取回写入输出目录。
+
+- 需要 app 在运行（默认 `http://localhost:3000`）；未运行时 MCP 会自动 `bun dev` 拉起（`IMAGE_MASTER_AUTOSTART=false` 可关闭）
+- 需要本机有 Edge 或 Chrome；首次调用会下载模型并缓存在浏览器 profile 中
+- `background-remover-ai` 默认请求 WebGPU，不可用时自动回退 CPU WASM
+- 网络无法直连模型源时，设置 `IMAGE_MASTER_BROWSER_PROXY`
 
 ```jsonc
 { "path": "C:/img/photo.png", "regions": [{ "x": 1355, "y": 1408, "width": 175, "height": 110 }] }
 { "path": "C:/img/hero.png", "mode": "ai", "model": "isnet_quint8" }
 ```
 
-> 服务端原生实现(把三个模型直接跑在 `onnxruntime-node` 上)仍在计划中,可省掉浏览器与 app 依赖。
+---
 
-## 🌟 特点
+## 🗂️ 项目结构
 
-- 🔒 **隐私安全** - 原有 9 个工具的处理均在浏览器本地完成，图片不会上传到服务器；11 个流水线工具由自托管服务端（`sharp` / ffmpeg）处理，只经过你自己运行的 app 服务器进程，不会上传到第三方
-- 🚀 **高性能** - 使用 Web Worker 多线程处理，不阻塞主线程；AI 抠图默认启用 WebGPU 推理，不可用时自动回退 CPU
-- 📱 **响应式设计** - 适配桌面和移动设备
-- 🎯 **批量处理** - 大部分工具支持同时处理多张图片
-- 💾 **离线可用** - AI 模型下载后缓存在本地，后续使用无需网络
+```text
+core/            # 18 个服务端工具的统一实现（sharp / ffmpeg）
+mcp/server.ts    # MCP stdio 入口（21 个工具）
+mcp/browser/     # 浏览器 AI 工具桥接（playwright-core）
+cli.ts           # CLI 入口
+app/api/tools/   # HTTP API 路由
+app/(tools)/     # 各工具 Web 页面
+app/lib/         # 工具参数 schema / API 客户端
+```
+
+---
+
+## 📦 构建部署
+
+```bash
+bun run build
+bun start
+```
+
+生产环境需要能执行 `sharp` 与 `ffmpeg-static` 二进制；无需数据库或外部服务。
+
+---
 
 ## 📄 License
 
 MIT
-
 
